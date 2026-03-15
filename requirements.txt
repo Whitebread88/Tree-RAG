@@ -7,3 +7,6 @@ google-auth>=2.23.0
 google-generativeai
 slowapi==0.1.8
 google-cloud-bigquery>=3.25.0
+cloud-sql-python-connector[pg8000]>=1.7.0
+sqlalchemy>=2.0.0
+pg8000>=1.30.0
