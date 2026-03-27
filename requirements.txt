@@ -6,3 +6,12 @@ google-cloud-storage>=2.14.0
 google-auth>=2.23.0
 google-generativeai
 slowapi==0.1.8
+sqlmodel>=0.0.22
+cloud-sql-python-connector[pg8000]>=1.8.0
+pg8000>=1.30.5
+pgvector>=0.2.5
+pypdf>=4.2.0
+python-docx>=1.1.2
+python-pptx>=0.6.23
+openpyxl>=3.1.5
+raganything>=1.2.10
