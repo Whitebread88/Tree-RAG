@@ -2,9 +2,7 @@ fastapi
 pydantic==2.6.1
 uvicorn
 python-multipart
-google-cloud-firestore
 google-cloud-storage>=2.14.0
 google-auth>=2.23.0
 google-generativeai
 slowapi==0.1.8
-google-cloud-bigquery>=3.25.0
