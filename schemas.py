@@ -35,3 +35,24 @@ class ProcessedFileResult(BaseModel):
 
 class ProcessFilesResponse(BaseModel):
     results: list[ProcessedFileResult]
+
+
+class ChatQueryRequest(BaseModel):
+    query: str
+    top_k: int = Field(default=5, ge=1, le=20)
+    folder_name: str | None = Field(default=None, description="Optional folder filter for retrieval")
+
+
+class RetrievedContextChunk(BaseModel):
+    file_id: int
+    file_name: str
+    folder_name: str
+    chunk_index: int
+    chunk_text: str
+    similarity_score: float
+
+
+class ChatQueryResponse(BaseModel):
+    query: str
+    answer: str
+    context: list[RetrievedContextChunk]
