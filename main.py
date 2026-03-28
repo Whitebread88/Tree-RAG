@@ -2,9 +2,10 @@ from fastapi import FastAPI, File, Form, UploadFile
 from sqlalchemy import text
 from sqlmodel import SQLModel, Session, select
 
+from chatbot_service import answer_query
 from db import engine
 from processing_service import process_uploaded_files
-from schemas import FileUploadBatchResponse, ProcessFilesRequest, ProcessFilesResponse
+from schemas import ChatQueryRequest, ChatQueryResponse, FileUploadBatchResponse, ProcessFilesRequest, ProcessFilesResponse
 from upload_service import upload_files_and_record_metadata
 
 app = FastAPI()
@@ -47,3 +48,8 @@ async def upload_files(
 @app.post("/files/process", response_model=ProcessFilesResponse)
 async def process_files(request: ProcessFilesRequest):
     return await process_uploaded_files(request)
+
+
+@app.post("/chat/query", response_model=ChatQueryResponse)
+def chat_query(request: ChatQueryRequest):
+    return answer_query(request)

@@ -3,18 +3,23 @@ import os
 import google.generativeai as genai
 
 
-def embed_chunks(chunks: list[str]) -> list[list[float]]:
-    if not chunks:
-        return []
-
+def _configure_genai() -> str:
     model_name = os.getenv("EMBEDDING_MODEL", "models/text-embedding-004")
-    configured_dim = int(os.getenv("EMBEDDING_DIM", "768"))
 
     api_key = os.getenv("GOOGLE_API_KEY")
     if not api_key:
         raise ValueError("GOOGLE_API_KEY environment variable is required for embeddings")
 
     genai.configure(api_key=api_key)
+    return model_name
+
+
+def embed_chunks(chunks: list[str]) -> list[list[float]]:
+    if not chunks:
+        return []
+
+    model_name = _configure_genai()
+    configured_dim = int(os.getenv("EMBEDDING_DIM", "768"))
 
     vectors: list[list[float]] = []
     for chunk in chunks:
@@ -28,3 +33,19 @@ def embed_chunks(chunks: list[str]) -> list[list[float]]:
         vectors.append(embedding)
 
     return vectors
+
+
+def embed_query(query: str) -> list[float]:
+    if not query.strip():
+        raise ValueError("Query cannot be empty")
+
+    model_name = _configure_genai()
+    configured_dim = int(os.getenv("EMBEDDING_DIM", "768"))
+
+    response = genai.embed_content(
+        model=model_name,
+        content=query,
+        task_type="retrieval_query",
+        output_dimensionality=configured_dim,
+    )
+    return response["embedding"]
