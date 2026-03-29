@@ -1,5 +1,4 @@
 from fastapi import FastAPI, File, Form, UploadFile
-from sqlalchemy import text
 from sqlmodel import SQLModel, Session, select
 
 from chatbot_service import answer_query
