@@ -1,9 +1,9 @@
 from fastapi import FastAPI, File, Form, UploadFile
-from sqlmodel import SQLModel, Session, select
+from sqlmodel import Session, select
 from chatbot_service import answer_query
 from db import engine
-from processing_service import process_uploaded_files
-from schemas import ChatQueryRequest, ChatQueryResponse, FileUploadBatchResponse, ProcessFilesRequest, ProcessFilesResponse
+from db_init import ensure_database_schema
+from schemas import ChatQueryRequest, ChatQueryResponse, FileUploadBatchResponse
 from upload_service import upload_files_and_record_metadata
 
 app = FastAPI()
@@ -11,12 +11,7 @@ app = FastAPI()
 
 @app.on_event("startup")
 def startup() -> None:
-    with engine.begin() as conn:
-        conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-        conn.execute(text("ALTER TABLE uploaded_files ADD COLUMN IF NOT EXISTS processed_at TIMESTAMPTZ"))
-        conn.execute(text("ALTER TABLE uploaded_files ADD COLUMN IF NOT EXISTS processing_error TEXT"))
-
-    SQLModel.metadata.create_all(engine)
+    ensure_database_schema()
 
 
 @app.get("/health")
@@ -41,11 +36,6 @@ async def upload_files(
     metadata: str | None = Form(None),
 ):
     return await upload_files_and_record_metadata(files=files, folder_name=folder_name, metadata=metadata)
-
-
-@app.post("/files/process", response_model=ProcessFilesResponse)
-async def process_files(request: ProcessFilesRequest):
-    return await process_uploaded_files(request)
 
 
 @app.post("/chat/query", response_model=ChatQueryResponse)

@@ -1,1 +1,2 @@
 -r requirements-service.txt
+raganything[all]>=1.2.10

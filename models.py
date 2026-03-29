@@ -1,9 +1,16 @@
 from datetime import datetime
+from enum import Enum
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import Column, DateTime, ForeignKey, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
+
+
+class FileProcessingStatus(str, Enum):
+    UPLOADED = "uploaded"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
 
 
 class UploadedFile(SQLModel, table=True):
@@ -16,6 +23,7 @@ class UploadedFile(SQLModel, table=True):
     gcs_path: str
     folder_name: str
     file_metadata: dict | None = Field(default=None, sa_column=Column("metadata", JSONB, nullable=True))
+    processing_status: FileProcessingStatus = Field(default=FileProcessingStatus.UPLOADED, nullable=False)
     processed_at: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True), nullable=True))
     processing_error: str | None = None
     created_at: datetime | None = Field(
