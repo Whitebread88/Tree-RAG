@@ -5,7 +5,7 @@ from sqlmodel import Session, delete, select
 from db import engine
 from embeddings_service import embed_chunks
 from gcs_service import get_storage_bucket
-from models import FileChunkEmbedding, UploadedFile
+from models import FileChunkEmbedding, FileProcessingStatus, UploadedFile
 from chunking import chunk_text
 from raganything_service import extract_text_with_raganything
 from schemas import ProcessFilesRequest, ProcessFilesResponse, ProcessedFileResult
@@ -21,6 +21,11 @@ async def process_uploaded_files(request: ProcessFilesRequest) -> ProcessFilesRe
             try:
                 blob = bucket.blob(uploaded_file.gcs_path)
                 file_bytes = blob.download_as_bytes()
+                uploaded_file.processing_status = FileProcessingStatus.PROCESSING
+                uploaded_file.processing_error = None
+                session.add(uploaded_file)
+                session.commit()
+                session.refresh(uploaded_file)
 
                 text = await extract_text_with_raganything(
                     file_name=uploaded_file.original_file_name,
@@ -44,6 +49,7 @@ async def process_uploaded_files(request: ProcessFilesRequest) -> ProcessFilesRe
 
                 uploaded_file.processed_at = datetime.now(timezone.utc)
                 uploaded_file.processing_error = None
+                uploaded_file.processing_status = FileProcessingStatus.COMPLETED
                 session.add(uploaded_file)
                 session.commit()
 
@@ -57,6 +63,7 @@ async def process_uploaded_files(request: ProcessFilesRequest) -> ProcessFilesRe
                 )
             except Exception as exc:  # allow per-file failures without stopping batch
                 session.rollback()
+                uploaded_file.processing_status = FileProcessingStatus.UPLOADED
                 uploaded_file.processing_error = str(exc)
                 session.add(uploaded_file)
                 session.commit()
@@ -74,12 +81,19 @@ async def process_uploaded_files(request: ProcessFilesRequest) -> ProcessFilesRe
 
 
 def _resolve_files_to_process(session: Session, request: ProcessFilesRequest) -> list[UploadedFile]:
-    statement = select(UploadedFile)
+    statement = select(UploadedFile).where(UploadedFile.processing_status == FileProcessingStatus.UPLOADED)
 
     if request.file_ids:
         statement = statement.where(UploadedFile.id.in_(request.file_ids))
 
     if request.folder_name:
         statement = statement.where(UploadedFile.folder_name == request.folder_name)
+
+    if request.include_completed:
+        statement = select(UploadedFile)
+        if request.file_ids:
+            statement = statement.where(UploadedFile.id.in_(request.file_ids))
+        if request.folder_name:
+            statement = statement.where(UploadedFile.folder_name == request.folder_name)
 
     return list(session.exec(statement).all())

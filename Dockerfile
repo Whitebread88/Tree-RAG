@@ -6,7 +6,8 @@ ENV PYTHONUNBUFFERED=True \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
 WORKDIR /app
-COPY requirements.txt .
+ARG REQUIREMENTS_FILE=requirements-service.txt
+COPY requirements.txt requirements-service.txt requirements-job.txt ./
 
 RUN set -eux; \
     apt-get update; \
@@ -19,7 +20,7 @@ RUN set -eux; \
         echo 'Unexpected python3.13 package detected from apt dependencies'; \
         exit 1; \
     fi; \
-    pip install -r requirements.txt; \
+    pip install -r "${REQUIREMENTS_FILE}"; \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
