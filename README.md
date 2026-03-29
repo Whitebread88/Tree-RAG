@@ -7,7 +7,7 @@ This project uses `raganything` for file parsing before chunking and embedding.
 To maximize format support, this repository now installs:
 
 - `raganything[all]` (Python extras for text/image/office/parser integrations)
-- `libreoffice` (system dependency required for Office document conversion paths)
+- `libreoffice-writer` (minimal system dependency used for Office document conversion paths)
 
 ### Local setup (Linux/macOS)
 
@@ -22,7 +22,7 @@ pip install -r requirements.txt
 - Ubuntu/Debian:
 
 ```bash
-sudo apt-get update && sudo apt-get install -y libreoffice
+sudo apt-get update && sudo apt-get install -y --no-install-recommends libreoffice-writer
 ```
 
 - macOS (Homebrew):
@@ -39,7 +39,7 @@ pip install "raganything[paddleocr]"
 
 ### Docker setup
 
-The `Dockerfile` installs LibreOffice and all Python dependencies, so no extra steps are needed when building the image:
+The `Dockerfile` uses `python:3.11-slim-bookworm`, installs `libreoffice-writer`, and then installs Python dependencies in one layer with cleanup, so no extra steps are needed when building the image:
 
 ```bash
 docker build -t tree-rag .
@@ -49,6 +49,6 @@ docker build -t tree-rag .
 
 ```bash
 python -c "import raganything; print('raganything import: OK')"
-libreoffice --version
+libreoffice --version  # provided by libreoffice-writer package
 ```
 
