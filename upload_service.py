@@ -41,7 +41,7 @@ async def upload_files_and_record_metadata(
                 processing_status=FileProcessingStatus.UPLOADED,
             )
             session.add(uploaded_file)
-            session.commit()
+            session.flush()
             session.refresh(uploaded_file)
 
             uploaded_files.append(
@@ -52,11 +52,12 @@ async def upload_files_and_record_metadata(
                     size_bytes=uploaded_file.size_bytes,
                     gcs_path=uploaded_file.gcs_path,
                     folder_name=uploaded_file.folder_name,
-                    metadata=uploaded_file.file_metadata,
+                    file_metadata=uploaded_file.file_metadata,
                     processing_status=uploaded_file.processing_status,
                     created_at=uploaded_file.created_at,
                 )
             )
+        session.commit()
 
     try:
         job_execution_name = trigger_file_processing_job()
