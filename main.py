@@ -31,17 +31,11 @@ def read_root():
 
 @app.post("/files/upload", response_model=FileUploadBatchResponse)
 async def upload_files(
-    files: list[UploadFile] = File(
-        ...,
-        description="One or more files to upload. In Swagger UI this should render a file picker.",
-    ),
+    file: UploadFile = File(..., description="File to upload"),
     folder_name: str = Form(...),
-    metadata: str | None = Form(
-        None,
-        description="Optional JSON object string. Example: {'source':'manual-upload'}",
-    ),
+    metadata: str | None = Form(None, description="Optional JSON object string. Example: {'source':'manual-upload'}"),
 ):
-    return await upload_files_and_record_metadata(files=files, folder_name=folder_name, metadata=metadata)
+    return await upload_files_and_record_metadata(files=[file], folder_name=folder_name, metadata=metadata)
 
 
 @app.post("/chat/query", response_model=ChatQueryResponse)
