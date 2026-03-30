@@ -1,5 +1,3 @@
-from typing import Annotated
-
 from fastapi import FastAPI, File, Form, UploadFile
 from sqlmodel import Session, select
 from chatbot_service import answer_query
@@ -33,9 +31,15 @@ def read_root():
 
 @app.post("/files/upload", response_model=FileUploadBatchResponse)
 async def upload_files(
-    files: Annotated[list[UploadFile], File(...)],
-    folder_name: Annotated[str, Form(...)],
-    metadata: Annotated[str | None, Form()] = None,
+    files: list[UploadFile] = File(
+        ...,
+        description="One or more files to upload. In Swagger UI this should render a file picker.",
+    ),
+    folder_name: str = Form(...),
+    metadata: str | None = Form(
+        None,
+        description="Optional JSON object string. Example: {'source':'manual-upload'}",
+    ),
 ):
     return await upload_files_and_record_metadata(files=files, folder_name=folder_name, metadata=metadata)
 
