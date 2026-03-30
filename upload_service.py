@@ -8,7 +8,7 @@ from sqlmodel import Session
 from cloud_run_jobs_service import trigger_file_processing_job
 from db import engine
 from gcs_service import get_storage_bucket
-from models import UploadedFile
+from models import FileProcessingStatus, UploadedFile
 from schemas import FileUploadBatchResponse, UploadedFileMetadata
 
 
@@ -38,6 +38,7 @@ async def upload_files_and_record_metadata(
                 gcs_path=destination_path,
                 folder_name=folder_name,
                 file_metadata=parsed_metadata,
+                processing_status=FileProcessingStatus.UPLOADED,
             )
             session.add(uploaded_file)
             session.commit()

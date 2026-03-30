@@ -89,11 +89,12 @@ def _resolve_files_to_process(session: Session, request: ProcessFilesRequest) ->
     if request.folder_name:
         statement = statement.where(UploadedFile.folder_name == request.folder_name)
 
+    files = list(session.exec(statement).all())
     if request.include_completed:
-        statement = select(UploadedFile)
-        if request.file_ids:
-            statement = statement.where(UploadedFile.id.in_(request.file_ids))
-        if request.folder_name:
-            statement = statement.where(UploadedFile.folder_name == request.folder_name)
+        return files
 
-    return list(session.exec(statement).all())
+    return [
+        uploaded_file
+        for uploaded_file in files
+        if uploaded_file.processing_status in (None, FileProcessingStatus.UPLOADED)
+    ]
