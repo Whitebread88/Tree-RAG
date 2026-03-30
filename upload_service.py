@@ -5,9 +5,10 @@ import uuid
 from fastapi import HTTPException, UploadFile
 from sqlmodel import Session
 
+from cloud_run_jobs_service import trigger_file_processing_job
 from db import engine
 from gcs_service import get_storage_bucket
-from models import UploadedFile
+from models import FileProcessingStatus, UploadedFile
 from schemas import FileUploadBatchResponse, UploadedFileMetadata
 
 
@@ -37,6 +38,7 @@ async def upload_files_and_record_metadata(
                 gcs_path=destination_path,
                 folder_name=folder_name,
                 file_metadata=parsed_metadata,
+                processing_status=FileProcessingStatus.UPLOADED,
             )
             session.add(uploaded_file)
             session.commit()
@@ -51,11 +53,17 @@ async def upload_files_and_record_metadata(
                     gcs_path=uploaded_file.gcs_path,
                     folder_name=uploaded_file.folder_name,
                     metadata=uploaded_file.file_metadata,
+                    processing_status=uploaded_file.processing_status,
                     created_at=uploaded_file.created_at,
                 )
             )
 
-    return FileUploadBatchResponse(files=uploaded_files)
+    try:
+        job_execution_name = trigger_file_processing_job()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    return FileUploadBatchResponse(files=uploaded_files, job_triggered=True, job_execution_name=job_execution_name)
 
 
 def _build_gcs_path(folder_name: str, filename: str) -> str:
