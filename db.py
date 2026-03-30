@@ -1,6 +1,6 @@
 import os
 
-from google.cloud.sql.connector import Connector, IPTypes
+from google.cloud.sql.connector import Connector
 from sqlmodel import create_engine
 
 connector = Connector()
