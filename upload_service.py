@@ -23,18 +23,21 @@ async def upload_files_and_record_metadata(
 
     with Session(engine) as session:
         for file in files:
-            file_bytes = await file.read()
-            if not file_bytes:
+            file.file.seek(0, os.SEEK_END)
+            size_bytes = file.file.tell()
+            file.file.seek(0)
+
+            if size_bytes == 0:
                 raise HTTPException(status_code=400, detail=f"File is empty: {file.filename}")
 
             destination_path = _build_gcs_path(folder_name=folder_name, filename=file.filename)
             blob = bucket.blob(destination_path)
-            blob.upload_from_string(file_bytes, content_type=file.content_type)
+            blob.upload_from_file(file.file, rewind=True, content_type=file.content_type)
 
             uploaded_file = UploadedFile(
                 original_file_name=file.filename,
                 content_type=file.content_type,
-                size_bytes=len(file_bytes),
+                size_bytes=size_bytes,
                 gcs_path=destination_path,
                 folder_name=folder_name,
                 file_metadata=parsed_metadata,

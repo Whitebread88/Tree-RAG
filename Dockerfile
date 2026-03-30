@@ -11,7 +11,9 @@ COPY requirements.txt requirements-service.txt requirements-job.txt ./
 
 RUN set -eux; \
     apt-get update; \
-    apt-get install -y --no-install-recommends libreoffice-writer; \
+    if [ "${REQUIREMENTS_FILE}" = "requirements-job.txt" ]; then \
+        apt-get install -y --no-install-recommends libreoffice-writer; \
+    fi; \
     # Sanity-check Python interpreter so we don't accidentally ship multiple versions.
     python --version; \
     python -c "import sys; assert sys.version_info[:2] == (3, 11), sys.version"; \
