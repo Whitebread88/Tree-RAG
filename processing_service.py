@@ -81,7 +81,10 @@ async def process_uploaded_files(request: ProcessFilesRequest) -> ProcessFilesRe
 
 
 def _resolve_files_to_process(session: Session, request: ProcessFilesRequest) -> list[UploadedFile]:
-    statement = select(UploadedFile).where(UploadedFile.processing_status == FileProcessingStatus.UPLOADED)
+    statement = select(UploadedFile)
+
+    if not request.include_completed:
+        statement = statement.where(UploadedFile.processing_status == FileProcessingStatus.UPLOADED)
 
     if request.file_ids:
         statement = statement.where(UploadedFile.id.in_(request.file_ids))
@@ -89,12 +92,4 @@ def _resolve_files_to_process(session: Session, request: ProcessFilesRequest) ->
     if request.folder_name:
         statement = statement.where(UploadedFile.folder_name == request.folder_name)
 
-    files = list(session.exec(statement).all())
-    if request.include_completed:
-        return files
-
-    return [
-        uploaded_file
-        for uploaded_file in files
-        if uploaded_file.processing_status in (None, FileProcessingStatus.UPLOADED)
-    ]
+    return list(session.exec(statement).all())
