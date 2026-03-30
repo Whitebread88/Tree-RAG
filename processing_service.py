@@ -81,7 +81,7 @@ async def process_uploaded_files(request: ProcessFilesRequest) -> ProcessFilesRe
 
 
 def _resolve_files_to_process(session: Session, request: ProcessFilesRequest) -> list[UploadedFile]:
-    statement = select(UploadedFile)
+    statement = select(UploadedFile).where(UploadedFile.processing_status == FileProcessingStatus.UPLOADED)
 
     if request.file_ids:
         statement = statement.where(UploadedFile.id.in_(request.file_ids))

@@ -13,8 +13,6 @@ def get_connection():
         user=os.environ["DB_USER"],
         db=os.environ["DB_NAME"],
         enable_iam_auth=True,
-        ip_type=IPTypes.PUBLIC,
     )
-
 
 engine = create_engine("postgresql+pg8000://", creator=get_connection, pool_pre_ping=True)
