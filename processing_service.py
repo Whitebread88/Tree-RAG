@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timezone
 
 from sqlmodel import Session, delete, select
@@ -10,6 +11,8 @@ from chunking import chunk_text
 from raganything_service import extract_text_with_raganything
 from schemas import ProcessFilesRequest, ProcessFilesResponse, ProcessedFileResult
 
+logger = logging.getLogger(__name__)
+
 
 async def process_uploaded_files(request: ProcessFilesRequest) -> ProcessFilesResponse:
     with Session(engine) as session:
@@ -19,6 +22,7 @@ async def process_uploaded_files(request: ProcessFilesRequest) -> ProcessFilesRe
 
         for uploaded_file in files_to_process:
             try:
+                logger.info("Starting file processing for file_id=%s path=%s", uploaded_file.id, uploaded_file.gcs_path)
                 blob = bucket.blob(uploaded_file.gcs_path)
                 file_bytes = blob.download_as_bytes()
                 uploaded_file.processing_status = FileProcessingStatus.PROCESSING
@@ -52,6 +56,11 @@ async def process_uploaded_files(request: ProcessFilesRequest) -> ProcessFilesRe
                 uploaded_file.processing_status = FileProcessingStatus.COMPLETED
                 session.add(uploaded_file)
                 session.commit()
+                logger.info(
+                    "Completed file processing for file_id=%s chunks_created=%s",
+                    uploaded_file.id,
+                    len(chunks),
+                )
 
                 results.append(
                     ProcessedFileResult(
@@ -63,10 +72,11 @@ async def process_uploaded_files(request: ProcessFilesRequest) -> ProcessFilesRe
                 )
             except Exception as exc:  # allow per-file failures without stopping batch
                 session.rollback()
-                uploaded_file.processing_status = FileProcessingStatus.UPLOADED
+                uploaded_file.processing_status = FileProcessingStatus.FAILED
                 uploaded_file.processing_error = str(exc)
                 session.add(uploaded_file)
                 session.commit()
+                logger.exception("File processing failed for file_id=%s: %s", uploaded_file.id, exc)
                 results.append(
                     ProcessedFileResult(
                         file_id=uploaded_file.id,

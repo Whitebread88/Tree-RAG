@@ -11,6 +11,7 @@ class FileProcessingStatus(str, Enum):
     UPLOADED = "uploaded"
     PROCESSING = "processing"
     COMPLETED = "completed"
+    FAILED = "failed"
 
 
 class UploadedFile(SQLModel, table=True):

@@ -66,6 +66,7 @@ python job_runner.py
 - `job_runner.py` processes all files currently in `uploaded` status and transitions each file to:
   - `processing` while it is being chunked/embedded
   - `completed` when done successfully
+  - `failed` when an error occurs (with `processing_error` set for troubleshooting)
 
 Required service environment variables for job triggering:
 
@@ -79,3 +80,24 @@ Required service environment variables for job triggering:
 python -c "import raganything; print('raganything import: OK')"
 libreoffice --version  # provided by libreoffice-writer package
 ```
+
+### Troubleshooting "job starts but no file is processed"
+
+If Cloud Run Job executions start but files remain unprocessed, check these first:
+
+1. **Job entrypoint/command**
+   - Ensure the Cloud Run Job command is `python job_runner.py`.
+   - If you leave command unset, the Docker default command runs `uvicorn ...` (API server), which will not process uploaded files.
+
+2. **Job image dependency profile**
+   - Build the job image with `--build-arg REQUIREMENTS_FILE=requirements-job.txt`.
+   - The service profile does not include `raganything`, so parsing will fail in job runs.
+
+3. **Environment parity between service and job**
+   - Confirm these are set on the **job** (not only on the service):
+     - `INSTANCE_CONNECTION_NAME`, `DB_USER`, `DB_NAME`
+     - `GCS_BUCKET_NAME`
+     - `GOOGLE_API_KEY` (for embeddings)
+
+4. **Database status/error inspection**
+   - Files that fail processing are now marked `failed` and include `processing_error` so failures are visible and don't look "stuck".
