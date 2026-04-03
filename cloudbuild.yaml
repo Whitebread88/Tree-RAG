@@ -71,3 +71,6 @@ images:
   - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE_IMAGE_NAME}:latest
   - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_JOB_IMAGE_NAME}:$COMMIT_SHA
   - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_JOB_IMAGE_NAME}:latest
+
+options:
+  logging: CLOUD_LOGGING_ONLY
