@@ -53,6 +53,31 @@ docker build -t tree-rag-service --build-arg REQUIREMENTS_FILE=requirements-serv
 docker build -t tree-rag-job --build-arg REQUIREMENTS_FILE=requirements-job.txt .
 ```
 
+### Cloud Build for separate service and job images
+
+Use the included `cloudbuild.yaml` to build two independent Artifact Registry images from the same repo:
+
+- Service image: built with `requirements-service.txt`
+- Job image: built with `requirements-job.txt`
+
+The Cloud Build config passes `--build-arg REQUIREMENTS_FILE=...`, which is supported by the repository `Dockerfile` via `ARG REQUIREMENTS_FILE` and conditional package install logic.
+
+```bash
+gcloud builds submit \
+  --config cloudbuild.yaml \
+  --substitutions _REGION=asia-southeast1,_AR_REPO=tree-rag,_SERVICE_NAME=tree-rag-service,_JOB_NAME=tree-rag-job
+```
+
+By default, the build only creates/pushes images. To also deploy the Cloud Run service and update the Cloud Run job in the same pipeline:
+
+```bash
+gcloud builds submit \
+  --config cloudbuild.yaml \
+  --substitutions _REGION=asia-southeast1,_AR_REPO=tree-rag,_SERVICE_NAME=tree-rag-service,_JOB_NAME=tree-rag-job,_DEPLOY_SERVICE=true,_DEPLOY_JOB=true
+```
+
+This keeps the service image lightweight while the job image can include heavy parsing dependencies.
+
 ## Cloud Run service + Cloud Run job flow
 
 - The `/files/upload` API now records uploaded files with a `processing_status` field set to `uploaded`.

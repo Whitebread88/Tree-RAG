@@ -1,0 +1,73 @@
+substitutions:
+  _REGION: asia-southeast1
+  _SERVICE_NAME: tree-rag-service
+  _JOB_NAME: tree-rag-job
+  _AR_REPO: tree-rag
+  _SERVICE_IMAGE_NAME: tree-rag-service
+  _JOB_IMAGE_NAME: tree-rag-job
+  _DEPLOY_SERVICE: "false"
+  _DEPLOY_JOB: "false"
+
+steps:
+  - name: gcr.io/cloud-builders/docker
+    id: Build service image
+    args:
+      - build
+      - --file
+      - Dockerfile
+      - --build-arg
+      - REQUIREMENTS_FILE=requirements-service.txt
+      - --tag
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE_IMAGE_NAME}:$COMMIT_SHA
+      - --tag
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE_IMAGE_NAME}:latest
+      - .
+
+  - name: gcr.io/cloud-builders/docker
+    id: Build job image
+    args:
+      - build
+      - --file
+      - Dockerfile
+      - --build-arg
+      - REQUIREMENTS_FILE=requirements-job.txt
+      - --tag
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_JOB_IMAGE_NAME}:$COMMIT_SHA
+      - --tag
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_JOB_IMAGE_NAME}:latest
+      - .
+
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    id: Deploy Cloud Run service (optional)
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        if [[ "${_DEPLOY_SERVICE}" == "true" ]]; then
+          gcloud run deploy "${_SERVICE_NAME}" \
+            --region="${_REGION}" \
+            --image="${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE_IMAGE_NAME}:$COMMIT_SHA" \
+            --platform=managed
+        else
+          echo "Skipping service deploy (_DEPLOY_SERVICE=${_DEPLOY_SERVICE})"
+        fi
+
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    id: Update Cloud Run job (optional)
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        if [[ "${_DEPLOY_JOB}" == "true" ]]; then
+          gcloud run jobs update "${_JOB_NAME}" \
+            --region="${_REGION}" \
+            --image="${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_JOB_IMAGE_NAME}:$COMMIT_SHA"
+        else
+          echo "Skipping job update (_DEPLOY_JOB=${_DEPLOY_JOB})"
+        fi
+
+images:
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE_IMAGE_NAME}:$COMMIT_SHA
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE_IMAGE_NAME}:latest
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_JOB_IMAGE_NAME}:$COMMIT_SHA
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_JOB_IMAGE_NAME}:latest
