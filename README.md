@@ -5,7 +5,7 @@
 This project now has separate dependency sets:
 
 - `requirements-service.txt`: Cloud Run service dependencies (upload/chat/DB + Cloud Run job trigger).
-- `requirements-job.txt`: job dependencies (includes everything in `requirements-service.txt` plus `raganything[all]`).
+- `requirements-job.txt`: job dependencies (includes everything in `requirements-service.txt` plus `docling`).
 
 ### Local setup (Linux/macOS)
 
@@ -35,21 +35,16 @@ sudo apt-get update && sudo apt-get install -y --no-install-recommends libreoffi
 brew install --cask libreoffice
 ```
 
-4. Optional (if PaddleOCR parser is desired and not already resolved by extras):
-
-```bash
-pip install "raganything[paddleocr]"
-```
 
 ### Docker setup
 
 The `Dockerfile` supports selecting service or job dependencies using `REQUIREMENTS_FILE`.
 
 ```bash
-# Service image (without raganything)
+# Service image (without docling)
 docker build -t tree-rag-service --build-arg REQUIREMENTS_FILE=requirements-service.txt .
 
-# Job image (includes raganything)
+# Job image (includes docling)
 docker build -t tree-rag-job --build-arg REQUIREMENTS_FILE=requirements-job.txt .
 ```
 
@@ -102,7 +97,7 @@ Required service environment variables for job triggering:
 ### Quick verification
 
 ```bash
-python -c "import raganything; print('raganything import: OK')"
+python -c "from docling.document_converter import DocumentConverter; print('docling import: OK')"
 libreoffice --version  # provided by libreoffice-writer package
 ```
 
@@ -116,7 +111,7 @@ If Cloud Run Job executions start but files remain unprocessed, check these firs
 
 2. **Job image dependency profile**
    - Build the job image with `--build-arg REQUIREMENTS_FILE=requirements-job.txt`.
-   - The service profile does not include `raganything`, so parsing will fail in job runs.
+   - The service profile does not include `docling`, so parsing will fail in job runs.
 
 3. **Environment parity between service and job**
    - Confirm these are set on the **job** (not only on the service):
