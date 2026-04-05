@@ -9,7 +9,7 @@ from embeddings_service import embed_chunks
 from gcs_service import get_storage_bucket
 from models import FileChunkEmbedding, FileProcessingStatus, UploadedFile
 from chunking import chunk_text
-from raganything_service import extract_text_with_raganything
+from docling_service import extract_text_with_docling
 from schemas import ProcessFilesRequest, ProcessFilesResponse, ProcessedFileResult
 
 logger = logging.getLogger(__name__)
@@ -36,7 +36,7 @@ async def process_uploaded_files(request: ProcessFilesRequest) -> ProcessFilesRe
                 session.commit()
                 session.refresh(uploaded_file)
 
-                text = await extract_text_with_raganything(
+                text = await extract_text_with_docling(
                     file_name=uploaded_file.original_file_name,
                     file_bytes=file_bytes,
                 )

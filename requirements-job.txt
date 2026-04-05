@@ -1,2 +1,2 @@
 -r requirements-service.txt
-raganything[all]>=1.2.10
+docling>=2.0.0
