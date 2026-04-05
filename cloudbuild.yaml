@@ -61,7 +61,9 @@ steps:
         if [[ "${_DEPLOY_JOB}" == "true" ]]; then
           gcloud run jobs update "${_JOB_NAME}" \
             --region="${_REGION}" \
-            --image="${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_JOB_IMAGE_NAME}:$COMMIT_SHA"
+            --image="${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_JOB_IMAGE_NAME}:$COMMIT_SHA" \
+            --command="python" \
+            --args="job_runner.py"
         else
           echo "Skipping job update (_DEPLOY_JOB=${_DEPLOY_JOB})"
         fi

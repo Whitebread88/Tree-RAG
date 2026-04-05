@@ -111,8 +111,8 @@ libreoffice --version  # provided by libreoffice-writer package
 If Cloud Run Job executions start but files remain unprocessed, check these first:
 
 1. **Job entrypoint/command**
-   - Ensure the Cloud Run Job command is `python job_runner.py`.
-   - If you leave command unset, the Docker default command runs `uvicorn ...` (API server), which will not process uploaded files.
+   - Ensure the Cloud Run Job is configured with command `python` and args `job_runner.py` (or equivalent).
+   - The image default command runs `uvicorn` for the API service, so the job command should be explicitly set in Cloud Run Job config.
 
 2. **Job image dependency profile**
    - Build the job image with `--build-arg REQUIREMENTS_FILE=requirements-job.txt`.
