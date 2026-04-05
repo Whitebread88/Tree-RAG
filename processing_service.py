@@ -1,6 +1,7 @@
 import logging
 from datetime import datetime, timezone
 
+from sqlalchemy import func
 from sqlmodel import Session, delete, select
 
 from db import engine
@@ -16,7 +17,11 @@ logger = logging.getLogger(__name__)
 
 async def process_uploaded_files(request: ProcessFilesRequest) -> ProcessFilesResponse:
     with Session(engine) as session:
+        _log_processing_status_summary(session=session, stage="before-selection")
         files_to_process = _resolve_files_to_process(session=session, request=request)
+        logger.info("Resolved %s files to process", len(files_to_process))
+        if not files_to_process:
+            logger.warning("No files matched processing criteria (include_completed=%s, file_ids=%s, folder_name=%s)", request.include_completed, request.file_ids, request.folder_name)
         bucket = get_storage_bucket()
         results: list[ProcessedFileResult] = []
 
@@ -87,7 +92,8 @@ async def process_uploaded_files(request: ProcessFilesRequest) -> ProcessFilesRe
                     )
                 )
 
-    return ProcessFilesResponse(results=results)
+        _log_processing_status_summary(session=session, stage="after-processing")
+        return ProcessFilesResponse(results=results)
 
 
 def _resolve_files_to_process(session: Session, request: ProcessFilesRequest) -> list[UploadedFile]:
@@ -103,3 +109,11 @@ def _resolve_files_to_process(session: Session, request: ProcessFilesRequest) ->
         statement = statement.where(UploadedFile.folder_name == request.folder_name)
 
     return list(session.exec(statement).all())
+
+
+def _log_processing_status_summary(session: Session, stage: str) -> None:
+    status_rows = session.exec(
+        select(UploadedFile.processing_status, func.count(UploadedFile.id)).group_by(UploadedFile.processing_status)
+    ).all()
+    status_counts = {str(status): count for status, count in status_rows}
+    logger.info("File status summary (%s): %s", stage, status_counts)
