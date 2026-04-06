@@ -63,9 +63,9 @@ def answer_query(request: ChatQueryRequest) -> ChatQueryResponse:
 
 
 def _generate_answer(query: str, context_blocks: list[str]) -> str:
-    api_key = os.getenv("GOOGLE_API_KEY")
+    api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
-        raise ValueError("GOOGLE_API_KEY environment variable is required for chatbot responses")
+        raise ValueError("GEMINI_API_KEY environment variable is required for chatbot responses")
 
     genai.configure(api_key=api_key)
     model_name = os.getenv("CHAT_MODEL", "gemini-1.5-flash")
