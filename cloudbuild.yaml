@@ -7,7 +7,7 @@ substitutions:
   _JOB_IMAGE_NAME: tree-rag-job
   _DEPLOY_SERVICE: "true"  # Set to true to always deploy
   _DEPLOY_JOB: "true"      # Set to true to always update job
-
+  
 steps:
   # 1. Build the Service Image (defaults to Uvicorn via Dockerfile CMD)
   - name: gcr.io/cloud-builders/docker
