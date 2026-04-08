@@ -7,11 +7,12 @@ substitutions:
   _JOB_IMAGE_NAME: tree-rag-job
   _DEPLOY_SERVICE: "true"
   _DEPLOY_JOB: "true"
-  
+
 steps:
   # 1. Build the Service Image
   - name: gcr.io/cloud-builders/docker
     id: Build service image
+    waitFor: ['-']
     args:
       - build
       - --file
@@ -24,9 +25,10 @@ steps:
       - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE_IMAGE_NAME}:latest
       - .
 
-  # 2. Build the Job Image
+  # 2. Build the Job Image (parallel with service build)
   - name: gcr.io/cloud-builders/docker
     id: Build job image
+    waitFor: ['-']
     args:
       - build
       - --file
@@ -40,19 +42,21 @@ steps:
       - .
 
   # 3. Push Service Image to Artifact Registry
-  # Explicit push ensures the image is available for the deploy steps below
   - name: gcr.io/cloud-builders/docker
     id: Push service image
+    waitFor: ['Build service image']
     args: ['push', '--all-tags', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE_IMAGE_NAME}']
 
-  # 4. Push Job Image to Artifact Registry
+  # 4. Push Job Image to Artifact Registry (parallel with service push)
   - name: gcr.io/cloud-builders/docker
     id: Push job image
+    waitFor: ['Build job image']
     args: ['push', '--all-tags', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_JOB_IMAGE_NAME}']
 
   # 5. Deploy Cloud Run service
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     id: Deploy Cloud Run service
+    waitFor: ['Push service image']
     entrypoint: bash
     args:
       - -ceu
@@ -66,10 +70,10 @@ steps:
           echo "Skipping service deploy"
         fi
 
-  # 6. Update or Create Cloud Run job
-  # Overrides default entrypoint/CMD to run the python script instead of the web server
+  # 6. Update or Create Cloud Run job (parallel with service deploy)
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     id: Update Cloud Run job
+    waitFor: ['Push job image']
     entrypoint: bash
     args:
       - -ceu
@@ -83,13 +87,6 @@ steps:
         else
           echo "Skipping job update"
         fi
-
-# Images listed here help with build metadata and UI visibility in Google Cloud Console
-images:
-  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE_IMAGE_NAME}:$COMMIT_SHA
-  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE_IMAGE_NAME}:latest
-  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_JOB_IMAGE_NAME}:$COMMIT_SHA
-  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_JOB_IMAGE_NAME}:latest
 
 options:
   logging: CLOUD_LOGGING_ONLY

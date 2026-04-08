@@ -15,4 +15,9 @@ def get_connection():
         enable_iam_auth=True,
     )
 
+
 engine = create_engine("postgresql+pg8000://", creator=get_connection, pool_pre_ping=True)
+
+
+def close_connector() -> None:
+    connector.close()
