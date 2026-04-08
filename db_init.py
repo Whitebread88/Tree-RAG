@@ -1,14 +1,22 @@
+import logging
+
 from sqlalchemy import text
 from sqlmodel import Session, SQLModel
 
 from db import engine
 from models import FileProcessingStatus, UploadedFile  # noqa: F401 – ensures table is registered
 
+logger = logging.getLogger(__name__)
+
 
 def ensure_database_schema() -> None:
     with Session(engine) as session:
-        session.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-        session.commit()
+        try:
+            session.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+            session.commit()
+        except Exception as exc:
+            session.rollback()
+            logger.warning("Could not create pgvector extension (may already exist or require superuser): %s", exc)
 
     SQLModel.metadata.create_all(engine)
 
