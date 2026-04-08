@@ -5,11 +5,11 @@ substitutions:
   _AR_REPO: tree-rag
   _SERVICE_IMAGE_NAME: tree-rag-service
   _JOB_IMAGE_NAME: tree-rag-job
-  _DEPLOY_SERVICE: "true"  # Set to true to always deploy
-  _DEPLOY_JOB: "true"      # Set to true to always update job
+  _DEPLOY_SERVICE: "true"
+  _DEPLOY_JOB: "true"
   
 steps:
-  # 1. Build the Service Image (defaults to Uvicorn via Dockerfile CMD)
+  # 1. Build the Service Image
   - name: gcr.io/cloud-builders/docker
     id: Build service image
     args:
@@ -24,7 +24,7 @@ steps:
       - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE_IMAGE_NAME}:latest
       - .
 
-  # 2. Build the Job Image (Installs LibreOffice + requirements-job.txt)
+  # 2. Build the Job Image
   - name: gcr.io/cloud-builders/docker
     id: Build job image
     args:
@@ -39,7 +39,21 @@ steps:
       - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_JOB_IMAGE_NAME}:latest
       - .
 
-  # 3. Deploy Cloud Run service
+  # --- CRITICAL NEW STEPS: Push images BEFORE deployment ---
+
+  # 3. Push Service Image
+  - name: gcr.io/cloud-builders/docker
+    id: Push service image
+    args: ['push', '--all-tags', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE_IMAGE_NAME}']
+
+  # 4. Push Job Image
+  - name: gcr.io/cloud-builders/docker
+    id: Push job image
+    args: ['push', '--all-tags', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_JOB_IMAGE_NAME}']
+
+  # ---------------------------------------------------------
+
+  # 5. Deploy Cloud Run service
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     id: Deploy Cloud Run service
     entrypoint: bash
@@ -55,8 +69,7 @@ steps:
           echo "Skipping service deploy"
         fi
 
-  # 4. Update Cloud Run job
-  # This forces the container to run the python script instead of Uvicorn
+  # 6. Update Cloud Run job
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     id: Update Cloud Run job
     entrypoint: bash
@@ -74,6 +87,8 @@ steps:
           echo "Skipping job update"
         fi
 
+# Images listed here are redundant if you use explicit push steps above, 
+# but keeping them doesn't hurt and helps with build metadata.
 images:
   - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE_IMAGE_NAME}:$COMMIT_SHA
   - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE_IMAGE_NAME}:latest
