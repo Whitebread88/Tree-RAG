@@ -1,6 +1,6 @@
 substitutions:
   _REGION: asia-southeast1
-  _SERVICE_NAME: tree-rag-service
+  _SERVICE_NAME: chatbot-rag
   _JOB_NAME: tree-rag-job
   _AR_REPO: tree-rag
   _SERVICE_IMAGE_NAME: tree-rag-service
@@ -39,19 +39,16 @@ steps:
       - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_JOB_IMAGE_NAME}:latest
       - .
 
-  # --- CRITICAL NEW STEPS: Push images BEFORE deployment ---
-
-  # 3. Push Service Image
+  # 3. Push Service Image to Artifact Registry
+  # Explicit push ensures the image is available for the deploy steps below
   - name: gcr.io/cloud-builders/docker
     id: Push service image
     args: ['push', '--all-tags', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE_IMAGE_NAME}']
 
-  # 4. Push Job Image
+  # 4. Push Job Image to Artifact Registry
   - name: gcr.io/cloud-builders/docker
     id: Push job image
     args: ['push', '--all-tags', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_JOB_IMAGE_NAME}']
-
-  # ---------------------------------------------------------
 
   # 5. Deploy Cloud Run service
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
@@ -69,7 +66,8 @@ steps:
           echo "Skipping service deploy"
         fi
 
-  # 6. Update Cloud Run job
+  # 6. Update or Create Cloud Run job
+  # Overrides default entrypoint/CMD to run the python script instead of the web server
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     id: Update Cloud Run job
     entrypoint: bash
@@ -77,18 +75,16 @@ steps:
       - -ceu
       - |
         if [[ "${_DEPLOY_JOB}" == "true" ]]; then
-          gcloud run jobs update "${_JOB_NAME}" \
+          gcloud run jobs deploy "${_JOB_NAME}" \
             --region="${_REGION}" \
             --image="${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_JOB_IMAGE_NAME}:$COMMIT_SHA" \
-            --clear-entrypoint \
             --command="python" \
             --args="job_runner.py"
         else
           echo "Skipping job update"
         fi
 
-# Images listed here are redundant if you use explicit push steps above, 
-# but keeping them doesn't hurt and helps with build metadata.
+# Images listed here help with build metadata and UI visibility in Google Cloud Console
 images:
   - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE_IMAGE_NAME}:$COMMIT_SHA
   - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE_IMAGE_NAME}:latest
