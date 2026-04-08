@@ -1,7 +1,7 @@
 substitutions:
   _REGION: asia-southeast1
   _SERVICE_NAME: chatbot-rag
-  _JOB_NAME: tree-rag-job
+  _JOB_NAME: rag-file-process
   _AR_REPO: tree-rag
   _SERVICE_IMAGE_NAME: tree-rag-service
   _JOB_IMAGE_NAME: tree-rag-job
