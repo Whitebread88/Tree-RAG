@@ -30,7 +30,6 @@ class UploadedFile(SQLModel, table=True):
             SAEnum(
                 FileProcessingStatus,
                 name="fileprocessingstatus",
-                values_callable=lambda enum_cls: [status.value for status in enum_cls],
             ),
             nullable=False,
         ),
