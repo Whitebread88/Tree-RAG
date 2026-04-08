@@ -117,7 +117,7 @@ If Cloud Run Job executions start but files remain unprocessed, check these firs
    - Confirm these are set on the **job** (not only on the service):
      - `INSTANCE_CONNECTION_NAME`, `DB_USER`, `DB_NAME`
      - `GCS_BUCKET_NAME`
-     - `GOOGLE_API_KEY` (for embeddings)
+     - `GEMINI_API_KEY` (for embeddings and chat)
 
 4. **Database status/error inspection**
    - Files that fail processing are now marked `failed` and include `processing_error` so failures are visible and don't look "stuck".

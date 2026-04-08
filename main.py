@@ -1,7 +1,8 @@
 from fastapi import FastAPI, File, Form, UploadFile
+from fastapi.responses import JSONResponse
 from sqlmodel import Session, select
 from chatbot_service import answer_query
-from db import engine
+from db import close_connector, engine
 from db_init import ensure_database_schema
 from schemas import ChatQueryRequest, ChatQueryResponse, FileUploadBatchResponse
 from upload_service import upload_files_and_record_metadata
@@ -14,6 +15,11 @@ def startup() -> None:
     ensure_database_schema()
 
 
+@app.on_event("shutdown")
+def shutdown() -> None:
+    close_connector()
+
+
 @app.get("/health")
 def health_check():
     try:
@@ -21,7 +27,7 @@ def health_check():
             session.exec(select(1)).one()
         return {"status": "connected", "database": "PostgreSQL is reachable"}
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        return JSONResponse(status_code=503, content={"status": "error", "message": str(e)})
 
 
 @app.get("/")
