@@ -18,16 +18,12 @@ def embed_chunks(chunks: list[str]) -> list[list[float]]:
     model_name = os.getenv("EMBEDDING_MODEL", "text-embedding-004")
     configured_dim = int(os.getenv("EMBEDDING_DIM", "768"))
 
-    vectors: list[list[float]] = []
-    for chunk in chunks:
-        response = client.models.embed_content(
-            model=model_name,
-            contents=chunk,
-            config={"output_dimensionality": configured_dim},
-        )
-        vectors.append(response.embeddings[0].values)
-
-    return vectors
+    response = client.models.embed_content(
+        model=model_name,
+        contents=chunks,
+        config={"output_dimensionality": configured_dim},
+    )
+    return [e.values for e in response.embeddings]
 
 
 def embed_query(query: str) -> list[float]:
