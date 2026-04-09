@@ -3,7 +3,7 @@ uvicorn
 python-multipart
 google-cloud-storage>=2.14.0
 google-cloud-run>=0.10.14
-google-generativeai
+google-genai
 sqlmodel>=0.0.22
 cloud-sql-python-connector[pg8000]>=1.8.0
 pg8000>=1.30.5

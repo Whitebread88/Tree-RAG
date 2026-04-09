@@ -1,36 +1,31 @@
 import os
 
-import google.generativeai as genai
+from google import genai
 
 
-def _configure_genai() -> str:
-    model_name = os.getenv("EMBEDDING_MODEL", "models/text-embedding-004")
-
+def _get_client() -> genai.Client:
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         raise ValueError("GEMINI_API_KEY environment variable is required for embeddings")
-
-    genai.configure(api_key=api_key)
-    return model_name
+    return genai.Client(api_key=api_key)
 
 
 def embed_chunks(chunks: list[str]) -> list[list[float]]:
     if not chunks:
         return []
 
-    model_name = _configure_genai()
+    client = _get_client()
+    model_name = os.getenv("EMBEDDING_MODEL", "text-embedding-004")
     configured_dim = int(os.getenv("EMBEDDING_DIM", "768"))
 
     vectors: list[list[float]] = []
     for chunk in chunks:
-        response = genai.embed_content(
+        response = client.models.embed_content(
             model=model_name,
-            content=chunk,
-            task_type="retrieval_document",
-            output_dimensionality=configured_dim,
+            contents=chunk,
+            config={"output_dimensionality": configured_dim},
         )
-        embedding = response["embedding"]
-        vectors.append(embedding)
+        vectors.append(response.embeddings[0].values)
 
     return vectors
 
@@ -39,13 +34,13 @@ def embed_query(query: str) -> list[float]:
     if not query.strip():
         raise ValueError("Query cannot be empty")
 
-    model_name = _configure_genai()
+    client = _get_client()
+    model_name = os.getenv("EMBEDDING_MODEL", "text-embedding-004")
     configured_dim = int(os.getenv("EMBEDDING_DIM", "768"))
 
-    response = genai.embed_content(
+    response = client.models.embed_content(
         model=model_name,
-        content=query,
-        task_type="retrieval_query",
-        output_dimensionality=configured_dim,
+        contents=query,
+        config={"output_dimensionality": configured_dim},
     )
-    return response["embedding"]
+    return response.embeddings[0].values

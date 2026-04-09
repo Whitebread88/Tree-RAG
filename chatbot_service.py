@@ -1,6 +1,6 @@
 import os
 
-import google.generativeai as genai
+from google import genai
 from sqlmodel import Session, select
 
 from db import engine
@@ -67,9 +67,8 @@ def _generate_answer(query: str, context_blocks: list[str]) -> str:
     if not api_key:
         raise ValueError("GEMINI_API_KEY environment variable is required for chatbot responses")
 
-    genai.configure(api_key=api_key)
-    model_name = os.getenv("CHAT_MODEL", "gemini-1.5-flash")
-    model = genai.GenerativeModel(model_name)
+    client = genai.Client(api_key=api_key)
+    model_name = os.getenv("CHAT_MODEL", "gemini-2.0-flash")
 
     prompt = (
         "You are a retrieval-augmented assistant. Use only the provided context to answer. "
@@ -79,5 +78,5 @@ def _generate_answer(query: str, context_blocks: list[str]) -> str:
         + "\n\n".join(context_blocks)
     )
 
-    response = model.generate_content(prompt)
+    response = client.models.generate_content(model=model_name, contents=prompt)
     return response.text or "I found relevant context but could not generate a response."
