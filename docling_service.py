@@ -1,12 +1,28 @@
+import logging
 import tempfile
 from pathlib import Path
 
+logger = logging.getLogger(__name__)
 
-async def extract_text_with_docling(file_name: str, file_bytes: bytes) -> str:
+
+def create_docling_converter():
+    """Create a DocumentConverter once to be reused across multiple files.
+
+    Model loading (layout, table structure, OCR) happens here, so calling
+    this once and passing the converter to extract_text_with_docling saves
+    significant time when processing a batch of files.
+    """
     try:
         from docling.document_converter import DocumentConverter
-    except Exception as exc:  # pragma: no cover - optional dependency/runtime configuration
+    except Exception as exc:
         raise RuntimeError("docling library is not available") from exc
+
+    return DocumentConverter()
+
+
+async def extract_text_with_docling(file_name: str, file_bytes: bytes, converter=None) -> str:
+    if converter is None:
+        converter = create_docling_converter()
 
     suffix = Path(file_name).suffix or ".bin"
 
@@ -14,7 +30,6 @@ async def extract_text_with_docling(file_name: str, file_bytes: bytes) -> str:
         input_path = Path(tmp_dir) / f"input{suffix}"
         input_path.write_bytes(file_bytes)
 
-        converter = DocumentConverter()
         result = converter.convert(str(input_path))
         extracted = _extract_text_from_result(result)
         if not extracted:
