@@ -10,7 +10,7 @@ from embeddings_service import embed_chunks
 from gcs_service import get_storage_bucket
 from models import FileChunkEmbedding, FileProcessingStatus, UploadedFile
 from chunking import chunk_text
-from docling_service import extract_text_with_docling
+from docling_service import create_docling_converter, extract_text_with_docling
 from schemas import ProcessFilesRequest, ProcessFilesResponse, ProcessedFileResult
 
 logger = logging.getLogger(__name__)
@@ -25,6 +25,7 @@ async def process_uploaded_files(request: ProcessFilesRequest) -> ProcessFilesRe
             logger.warning("No files matched processing criteria (include_completed=%s, file_ids=%s, folder_name=%s)", request.include_completed, request.file_ids, request.folder_name)
         bucket = get_storage_bucket()
         results: list[ProcessedFileResult] = []
+        converter = create_docling_converter() if files_to_process else None
 
         for uploaded_file in files_to_process:
             try:
@@ -47,6 +48,7 @@ async def process_uploaded_files(request: ProcessFilesRequest) -> ProcessFilesRe
                 text = await extract_text_with_docling(
                     file_name=uploaded_file.original_file_name,
                     file_bytes=file_bytes,
+                    converter=converter,
                 )
                 chunks = chunk_text(text=text, chunk_size=request.chunk_size, chunk_overlap=request.chunk_overlap)
                 vectors = embed_chunks(chunks)

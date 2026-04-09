@@ -7,7 +7,7 @@ ENV PYTHONUNBUFFERED=True \
 
 WORKDIR /app
 ARG REQUIREMENTS_FILE=requirements-service.txt
-COPY requirements.txt requirements-service.txt requirements-job.txt ./
+COPY requirements.txt requirements-service.txt requirements-job.txt preload_models.py ./
 
 RUN set -eux; \
     apt-get update; \
@@ -25,6 +25,12 @@ RUN set -eux; \
     pip install -r "${REQUIREMENTS_FILE}"; \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+# Pre-download docling model weights into the image (job image only)
+RUN set -eux; \
+    if [ "${REQUIREMENTS_FILE}" = "requirements-job.txt" ]; then \
+        python preload_models.py; \
+    fi
 
 COPY . .
 
