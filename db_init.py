@@ -14,10 +14,11 @@ def _add_missing_enum_values() -> None:
     with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
         for member in FileProcessingStatus:
             try:
-                conn.execute(
-                    text("ALTER TYPE fileprocessingstatus ADD VALUE IF NOT EXISTS :val"),
-                    {"val": member.name},
-                )
+                # DDL statements don't support parameterized values in PostgreSQL,
+                # so we inline the value. Safe because values come from our own enum.
+                conn.execute(text(
+                    f"ALTER TYPE fileprocessingstatus ADD VALUE IF NOT EXISTS '{member.name}'"
+                ))
             except Exception as exc:
                 logger.warning("Could not add enum value %s: %s", member.name, exc)
 
