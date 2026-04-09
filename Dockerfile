@@ -12,7 +12,7 @@ COPY requirements.txt requirements-service.txt requirements-job.txt ./
 RUN set -eux; \
     apt-get update; \
     if [ "${REQUIREMENTS_FILE}" = "requirements-job.txt" ]; then \
-        apt-get install -y --no-install-recommends libreoffice-writer; \
+        apt-get install -y --no-install-recommends libreoffice-writer libgl1 libglib2.0-0; \
     fi; \
     # Sanity-check Python interpreter so we don't accidentally ship multiple versions.
     python --version; \
