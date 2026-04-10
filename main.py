@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, Form, UploadFile
+from fastapi import FastAPI, Form, UploadFile
 from fastapi.responses import JSONResponse
 from sqlmodel import Session, select
 from chatbot_service import answer_query
@@ -37,7 +37,7 @@ def read_root():
 
 @app.post("/files/upload", response_model=FileUploadBatchResponse)
 async def upload_files(
-    files: list[UploadFile] = File(..., description="One or more files to upload"),
+    files: list[UploadFile],
     folder_name: str = Form(...),
     metadata: str | None = Form(None, description="Optional JSON object string. Example: {'source':'manual-upload'}"),
 ):
