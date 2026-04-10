@@ -7,7 +7,7 @@ from db_init import ensure_database_schema
 from schemas import ChatQueryRequest, ChatQueryResponse, FileUploadBatchResponse
 from upload_service import upload_files_and_record_metadata
 
-app = FastAPI()
+app = FastAPI(openapi_version="3.0.3")
 
 
 @app.on_event("startup")
