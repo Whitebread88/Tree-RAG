@@ -1,8 +1,10 @@
-"""Pre-download docling model weights during Docker build.
+"""Pre-download and initialize docling model weights during Docker build.
 
 Creates a DocumentConverter and converts a minimal PDF to trigger
-downloads of all ML models (layout detection, table structure, OCR).
-These get cached in the image layer so job startup is instant.
+downloads AND initialization of all ML models (layout detection,
+table structure, OCR). Running this on a high-CPU Cloud Build machine
+bakes the fully initialized models into the Docker image so the
+Cloud Run job starts with zero model setup overhead.
 """
 import tempfile
 from pathlib import Path
@@ -20,6 +22,8 @@ MINIMAL_PDF = (
     b"trailer<</Size 4/Root 1 0 R>>\nstartxref\n206\n%%EOF"
 )
 
+print("Initializing docling models (download + warm-up)...")
+
 with tempfile.TemporaryDirectory() as tmp:
     pdf_path = Path(tmp) / "dummy.pdf"
     pdf_path.write_bytes(MINIMAL_PDF)
@@ -29,4 +33,4 @@ with tempfile.TemporaryDirectory() as tmp:
     except Exception:
         pass  # Result doesn't matter — models are now cached
 
-print("Docling model pre-download complete")
+print("Docling model pre-download complete.")
