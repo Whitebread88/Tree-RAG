@@ -29,17 +29,18 @@ steps:
   - name: gcr.io/cloud-builders/docker
     id: Build job image
     waitFor: ['-']
+    entrypoint: bash
     args:
-      - build
-      - --file
-      - Dockerfile
-      - --build-arg
-      - REQUIREMENTS_FILE=requirements-job.txt
-      - --tag
-      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_JOB_IMAGE_NAME}:$COMMIT_SHA
-      - --tag
-      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_JOB_IMAGE_NAME}:latest
-      - .
+      - -c
+      - |
+        docker build \
+          --file Dockerfile \
+          --build-arg REQUIREMENTS_FILE=requirements-job.txt \
+          --build-arg HF_TOKEN=$$HF_TOKEN \
+          --tag ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_JOB_IMAGE_NAME}:$COMMIT_SHA \
+          --tag ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_JOB_IMAGE_NAME}:latest \
+          .
+    secretEnv: ['HF_TOKEN']
 
   # 3. Push Service Image to Artifact Registry
   - name: gcr.io/cloud-builders/docker
@@ -87,6 +88,13 @@ steps:
         else
           echo "Skipping job update"
         fi
+
+availableSecrets:
+  secretManager:
+    - versionName: projects/$PROJECT_ID/secrets/HF_TOKEN/versions/latest
+      env: 'HF_TOKEN'
+
+timeout: 1800s
 
 options:
   logging: CLOUD_LOGGING_ONLY
