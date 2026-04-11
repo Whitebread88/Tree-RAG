@@ -7,6 +7,7 @@ ENV PYTHONUNBUFFERED=True \
 
 WORKDIR /app
 ARG REQUIREMENTS_FILE=requirements-service.txt
+ARG HF_TOKEN=""
 COPY requirements.txt requirements-service.txt requirements-job.txt preload_models.py ./
 
 RUN set -eux; \
@@ -26,10 +27,11 @@ RUN set -eux; \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
-# Pre-download docling model weights into the image (job image only)
+# Pre-download docling model weights into the image (job image only).
+# HF_TOKEN enables authenticated HuggingFace downloads (much faster).
 RUN set -eux; \
     if [ "${REQUIREMENTS_FILE}" = "requirements-job.txt" ]; then \
-        python preload_models.py; \
+        HF_TOKEN="${HF_TOKEN}" python preload_models.py; \
     fi
 
 COPY . .
