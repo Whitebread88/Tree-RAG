@@ -10,16 +10,23 @@ logger = logging.getLogger(__name__)
 
 
 def _add_missing_enum_values() -> None:
-    """Add any enum values that were introduced after the initial CREATE TYPE."""
-    with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+    """Add any enum values that were introduced after the initial CREATE TYPE.
+
+    Note: We use an explicit commit() after each ALTER TYPE instead of
+    AUTOCOMMIT isolation_level, because the Cloud SQL Connector + pg8000
+    driver ignores SQLAlchemy's isolation_level setting.  PostgreSQL 12+
+    allows ALTER TYPE ADD VALUE inside a transaction block, so an explicit
+    commit is safe and reliable.
+    """
+    with engine.connect() as conn:
         for member in FileProcessingStatus:
             try:
-                # DDL statements don't support parameterized values in PostgreSQL,
-                # so we inline the value. Safe because values come from our own enum.
                 conn.execute(text(
                     f"ALTER TYPE fileprocessingstatus ADD VALUE IF NOT EXISTS '{member.name}'"
                 ))
+                conn.commit()
             except Exception as exc:
+                conn.rollback()
                 logger.warning("Could not add enum value %s: %s", member.name, exc)
 
 
