@@ -15,7 +15,7 @@ def embed_chunks(chunks: list[str]) -> list[list[float]]:
         return []
 
     client = _get_client()
-    model_name = os.getenv("EMBEDDING_MODEL", "text-embedding-004")
+    model_name = os.getenv("EMBEDDING_MODEL", "gemini-embedding-001")
     configured_dim = int(os.getenv("EMBEDDING_DIM", "768"))
 
     response = client.models.embed_content(
@@ -31,7 +31,7 @@ def embed_query(query: str) -> list[float]:
         raise ValueError("Query cannot be empty")
 
     client = _get_client()
-    model_name = os.getenv("EMBEDDING_MODEL", "text-embedding-004")
+    model_name = os.getenv("EMBEDDING_MODEL", "gemini-embedding-001")
     configured_dim = int(os.getenv("EMBEDDING_DIM", "768"))
 
     response = client.models.embed_content(
