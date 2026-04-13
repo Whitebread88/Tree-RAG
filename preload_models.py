@@ -1,33 +1,36 @@
-"""Pre-download docling model weights during Docker build.
+"""Pre-download and initialize docling model weights during Docker build.
 
-Downloads model artifacts from HuggingFace so they are baked into the
-Docker image.  This is *download-only* — we deliberately skip running
-inference (DocumentConverter.convert) because the PyTorch model
-initialization / JIT compilation is extremely CPU-intensive and
-causes Cloud Build timeouts even on E2_HIGHCPU_8 machines.
-
-The Cloud Run job will still need to initialize the models on first
-run (~2-3 min), but it won't need to download them (~5-10 min saved).
+Creates a DocumentConverter and converts a minimal PDF to trigger
+downloads AND initialization of all ML models (layout detection,
+table structure, OCR). Running this on a high-CPU Cloud Build machine
+bakes the fully initialized models into the Docker image so the
+Cloud Run job starts with zero model setup overhead.
 """
+import tempfile
+from pathlib import Path
 
-from huggingface_hub import snapshot_download
+from docling.document_converter import DocumentConverter
 
-MODELS = [
-    "ds4sd/docling-models",
-]
+# Minimal valid PDF — just enough to trigger pipeline initialization
+# and all model downloads (layout, table structure, OCR).
+MINIMAL_PDF = (
+    b"%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n"
+    b"2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n"
+    b"3 0 obj<</Type/Page/MediaBox[0 0 72 72]/Parent 2 0 R/Resources<<>>>>endobj\n"
+    b"xref\n0 4\n0000000000 65535 f \n0000000009 00000 n \n"
+    b"0000000058 00000 n \n0000000115 00000 n \n"
+    b"trailer<</Size 4/Root 1 0 R>>\nstartxref\n206\n%%EOF"
+)
 
-for repo_id in MODELS:
-    print(f"Downloading {repo_id} ...")
-    snapshot_download(repo_id)
-    print(f"  {repo_id} done.")
+print("Initializing docling models (download + warm-up)...")
 
-# Trigger EasyOCR model download (uses its own cache, not HuggingFace)
-try:
-    import easyocr
-    print("Downloading EasyOCR models ...")
-    easyocr.Reader(["en"], gpu=False, download_enabled=True)
-    print("  EasyOCR done.")
-except Exception as e:
-    print(f"  EasyOCR download skipped: {e}")
+with tempfile.TemporaryDirectory() as tmp:
+    pdf_path = Path(tmp) / "dummy.pdf"
+    pdf_path.write_bytes(MINIMAL_PDF)
+    converter = DocumentConverter()
+    try:
+        converter.convert(str(pdf_path))
+    except Exception:
+        pass  # Result doesn't matter — models are now cached
 
-print("Model pre-download complete.")
+print("Docling model pre-download complete.")
