@@ -67,7 +67,7 @@ def _generate_answer(query: str, context_blocks: list[str]) -> str:
     if not api_key:
         raise ValueError("GEMINI_API_KEY environment variable is required for chatbot responses")
 
-    client = genai.Client(api_key=api_key, http_options={"api_version": "v1"})
+    client = genai.Client(api_key=api_key)
     model_name = os.getenv("CHAT_MODEL", "gemini-2.0-flash")
 
     prompt = (
