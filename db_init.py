@@ -30,6 +30,20 @@ def _add_missing_enum_values() -> None:
                 logger.warning("Could not add enum value %s: %s", member.name, exc)
 
 
+def _ensure_vector_indexes() -> None:
+    """Create an HNSW index on the embedding column for fast cosine similarity search."""
+    with engine.connect() as conn:
+        try:
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS file_chunk_embeddings_embedding_hnsw_idx "
+                "ON file_chunk_embeddings USING hnsw (embedding vector_cosine_ops)"
+            ))
+            conn.commit()
+        except Exception as exc:
+            conn.rollback()
+            logger.warning("Could not create HNSW index on file_chunk_embeddings.embedding: %s", exc)
+
+
 def ensure_database_schema() -> None:
     with Session(engine) as session:
         try:
@@ -41,6 +55,7 @@ def ensure_database_schema() -> None:
 
     SQLModel.metadata.create_all(engine)
     _add_missing_enum_values()
+    _ensure_vector_indexes()
 
     with Session(engine) as session:
         # Migrate legacy records that have NULL processing_status
