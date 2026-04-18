@@ -47,6 +47,12 @@ class ChatQueryRequest(SQLModel):
     query: str
     top_k: int = Field(default=5, ge=1, le=20)
     folder_name: str | None = Field(default=None, description="Optional folder filter for retrieval")
+    similarity_threshold: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Drop chunks with cosine similarity below this threshold (0..1).",
+    )
 
 
 class RetrievedContextChunk(SQLModel):
@@ -56,6 +62,7 @@ class RetrievedContextChunk(SQLModel):
     chunk_index: int
     chunk_text: str
     similarity_score: float
+    page_number: int | None = None
 
 
 class ChatQueryResponse(SQLModel):
