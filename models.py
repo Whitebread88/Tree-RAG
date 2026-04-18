@@ -36,6 +36,7 @@ class UploadedFile(SQLModel, table=True):
     )
     processed_at: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True), nullable=True))
     processing_error: str | None = None
+    content_hash: str | None = Field(default=None, index=True)
     created_at: datetime | None = Field(
         default=None,
         sa_column=Column(DateTime(timezone=True), server_default=func.now(), nullable=False),
@@ -50,6 +51,9 @@ class FileChunkEmbedding(SQLModel, table=True):
     chunk_index: int
     chunk_text: str = Field(sa_column=Column(Text, nullable=False))
     embedding: list[float] = Field(sa_column=Column(Vector(768), nullable=False))
+    page_number: int | None = None
+    char_offset_start: int | None = None
+    char_offset_end: int | None = None
     created_at: datetime | None = Field(
         default=None,
         sa_column=Column(DateTime(timezone=True), server_default=func.now(), nullable=False),

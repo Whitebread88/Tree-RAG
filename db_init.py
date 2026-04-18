@@ -44,6 +44,33 @@ def _ensure_vector_indexes() -> None:
             logger.warning("Could not create HNSW index on file_chunk_embeddings.embedding: %s", exc)
 
 
+# ALTER TABLE statements that bring legacy schemas in line with the current
+# SQLModel definitions. SQLModel.metadata.create_all only creates missing
+# tables, never new columns or indexes on existing ones, so column additions
+# need to be applied explicitly here.
+_COLUMN_MIGRATIONS: tuple[str, ...] = (
+    "ALTER TABLE uploaded_files ADD COLUMN IF NOT EXISTS content_hash TEXT",
+    "ALTER TABLE file_chunk_embeddings ADD COLUMN IF NOT EXISTS page_number INTEGER",
+    "ALTER TABLE file_chunk_embeddings ADD COLUMN IF NOT EXISTS char_offset_start INTEGER",
+    "ALTER TABLE file_chunk_embeddings ADD COLUMN IF NOT EXISTS char_offset_end INTEGER",
+)
+
+_SUPPORT_INDEXES: tuple[str, ...] = (
+    "CREATE INDEX IF NOT EXISTS uploaded_files_content_hash_idx ON uploaded_files (content_hash)",
+)
+
+
+def _apply_column_migrations() -> None:
+    with engine.connect() as conn:
+        for statement in _COLUMN_MIGRATIONS + _SUPPORT_INDEXES:
+            try:
+                conn.execute(text(statement))
+                conn.commit()
+            except Exception as exc:
+                conn.rollback()
+                logger.warning("Schema migration failed (%s): %s", statement, exc)
+
+
 def ensure_database_schema() -> None:
     with Session(engine) as session:
         try:
@@ -55,6 +82,7 @@ def ensure_database_schema() -> None:
 
     SQLModel.metadata.create_all(engine)
     _add_missing_enum_values()
+    _apply_column_migrations()
     _ensure_vector_indexes()
 
     with Session(engine) as session:
