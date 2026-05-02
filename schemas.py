@@ -46,7 +46,11 @@ class ProcessFilesResponse(SQLModel):
 class ChatQueryRequest(SQLModel):
     query: str
     top_k: int = Field(default=5, ge=1, le=20)
-    folder_name: str | None = Field(default=None, description="Optional folder filter for retrieval")
+    folder_names: list[str] | None = Field(
+        default=None,
+        max_length=50,
+        description="Optional list of folder names to restrict retrieval to.",
+    )
     similarity_threshold: float | None = Field(
         default=None,
         ge=0.0,
