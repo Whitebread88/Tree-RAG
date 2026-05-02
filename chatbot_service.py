@@ -52,8 +52,8 @@ def answer_query(request: ChatQueryRequest) -> ChatQueryResponse:
             .limit(request.top_k)
         )
 
-        if request.folder_name:
-            statement = statement.where(UploadedFile.folder_name == request.folder_name)
+        if request.folder_names:
+            statement = statement.where(UploadedFile.folder_name.in_(request.folder_names))
 
         rows = session.exec(statement).all()
 
