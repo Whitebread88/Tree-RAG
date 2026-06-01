@@ -58,3 +58,38 @@ class FileChunkEmbedding(SQLModel, table=True):
         default=None,
         sa_column=Column(DateTime(timezone=True), server_default=func.now(), nullable=False),
     )
+
+
+class Conversation(SQLModel, table=True):
+    __tablename__ = "conversations"
+
+    id: int | None = Field(default=None, primary_key=True)
+    user_id: str = Field(index=True, nullable=False)
+    title: str | None = None
+    created_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), server_default=func.now(), nullable=False),
+    )
+    updated_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), server_default=func.now(), nullable=False),
+    )
+
+
+class ChatMessage(SQLModel, table=True):
+    __tablename__ = "chat_messages"
+
+    id: int | None = Field(default=None, primary_key=True)
+    conversation_id: int = Field(
+        sa_column=Column(
+            ForeignKey("conversations.id", ondelete="CASCADE"),
+            nullable=False,
+            index=True,
+        ),
+    )
+    role: str = Field(nullable=False)
+    content: str = Field(sa_column=Column(Text, nullable=False))
+    created_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), server_default=func.now(), nullable=False),
+    )
