@@ -1,4 +1,5 @@
 import logging
+import math
 import os
 import time
 from functools import lru_cache
@@ -15,6 +16,15 @@ _INITIAL_BACKOFF_SECONDS = 2.0
 
 _DOCUMENT_TASK_TYPE = "RETRIEVAL_DOCUMENT"
 _QUERY_TASK_TYPE = "RETRIEVAL_QUERY"
+
+
+def _l2_normalize(vector: list[float]) -> list[float]:
+    # Truncated Gemini embeddings (output_dimensionality < 3072) are not unit-norm,
+    # so cosine distance against them is off-scale. Re-normalize here.
+    norm = math.sqrt(sum(x * x for x in vector))
+    if norm == 0:
+        return vector
+    return [x / norm for x in vector]
 
 
 @lru_cache(maxsize=1)
@@ -41,7 +51,7 @@ def _embed_with_retry(contents: list[str], task_type: str) -> list[list[float]]:
                 contents=contents,
                 config=config,
             )
-            return [e.values for e in response.embeddings]
+            return [_l2_normalize(e.values) for e in response.embeddings]
         except Exception as exc:
             last_exc = exc
             if attempt == _MAX_RETRIES - 1:
