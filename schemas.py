@@ -44,6 +44,11 @@ class ProcessFilesResponse(SQLModel):
 
 
 class ChatQueryRequest(SQLModel):
+    user_id: str = Field(description="Identifier for the end user owning this conversation.")
+    conversation_id: int | None = Field(
+        default=None,
+        description="Existing conversation to continue. If omitted, a new conversation is created.",
+    )
     query: str
     top_k: int = Field(default=5, ge=1, le=20)
     folder_names: list[str] | None = Field(
@@ -70,6 +75,32 @@ class RetrievedContextChunk(SQLModel):
 
 
 class ChatQueryResponse(SQLModel):
+    conversation_id: int
     query: str
     answer: str
     context: list[RetrievedContextChunk]
+
+
+class ConversationSummary(SQLModel):
+    id: int
+    title: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ConversationListResponse(SQLModel):
+    conversations: list[ConversationSummary]
+
+
+class ChatMessageItem(SQLModel):
+    id: int
+    role: str
+    content: str
+    created_at: datetime
+
+
+class ConversationMessagesResponse(SQLModel):
+    conversation_id: int
+    user_id: str
+    title: str | None
+    messages: list[ChatMessageItem]

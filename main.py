@@ -3,10 +3,21 @@ from typing import Annotated
 from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 from sqlmodel import Session, select
-from chatbot_service import answer_query
+from chatbot_service import (
+    answer_query,
+    delete_conversation,
+    get_conversation_messages,
+    list_conversations,
+)
 from db import close_connector, engine
 from db_init import ensure_database_schema
-from schemas import ChatQueryRequest, ChatQueryResponse, FileUploadBatchResponse
+from schemas import (
+    ChatQueryRequest,
+    ChatQueryResponse,
+    ConversationListResponse,
+    ConversationMessagesResponse,
+    FileUploadBatchResponse,
+)
 from upload_service import upload_files_and_record_metadata
 
 app = FastAPI()
@@ -74,3 +85,19 @@ async def upload_files(
 @app.post("/chat/query", response_model=ChatQueryResponse)
 def chat_query(request: ChatQueryRequest):
     return answer_query(request)
+
+
+@app.get("/chat/conversations", response_model=ConversationListResponse)
+def chat_list_conversations(user_id: str):
+    return list_conversations(user_id=user_id)
+
+
+@app.get("/chat/conversations/{conversation_id}", response_model=ConversationMessagesResponse)
+def chat_get_conversation(conversation_id: int, user_id: str):
+    return get_conversation_messages(user_id=user_id, conversation_id=conversation_id)
+
+
+@app.delete("/chat/conversations/{conversation_id}", status_code=204)
+def chat_delete_conversation(conversation_id: int, user_id: str):
+    delete_conversation(user_id=user_id, conversation_id=conversation_id)
+    return None
