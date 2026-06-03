@@ -104,3 +104,14 @@ class ConversationMessagesResponse(SQLModel):
     user_id: str
     title: str | None
     messages: list[ChatMessageItem]
+
+
+class UserLoginRequest(SQLModel):
+    id: str = Field(description="The user's unique email address.")
+    name: str
+
+
+class UserResponse(SQLModel):
+    id: str
+    name: str
+    last_login_date: datetime

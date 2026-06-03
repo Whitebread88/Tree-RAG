@@ -17,8 +17,11 @@ from schemas import (
     ConversationListResponse,
     ConversationMessagesResponse,
     FileUploadBatchResponse,
+    UserLoginRequest,
+    UserResponse,
 )
 from upload_service import upload_files_and_record_metadata
+from user_service import record_user_login
 
 app = FastAPI()
 
@@ -80,6 +83,11 @@ async def upload_files(
         folder_name=folder_name,
         metadata=metadata or None,
     )
+
+
+@app.post("/users/login", response_model=UserResponse)
+def user_login(request: UserLoginRequest):
+    return record_user_login(request)
 
 
 @app.post("/chat/query", response_model=ChatQueryResponse)

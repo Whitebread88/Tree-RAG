@@ -60,6 +60,16 @@ class FileChunkEmbedding(SQLModel, table=True):
     )
 
 
+class User(SQLModel, table=True):
+    __tablename__ = "users"
+
+    id: str = Field(primary_key=True)
+    name: str
+    last_login_date: datetime | None = Field(
+        default=None, sa_column=Column(DateTime(timezone=True), nullable=False)
+    )
+
+
 class Conversation(SQLModel, table=True):
     __tablename__ = "conversations"
 
