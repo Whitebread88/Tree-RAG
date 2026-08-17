@@ -272,7 +272,7 @@ def _format_history_block(history: list[ChatMessage]) -> str:
 
 def _generate_answer(query: str, context_blocks: list[str], history: list[ChatMessage]) -> str:
     client = _get_client()
-    model_name = os.getenv("CHAT_MODEL", "gemini-2.0-flash")
+    model_name = os.getenv("CHAT_MODEL", "gemini-3.7-flash")
 
     prompt = (
         f"{_SYSTEM_INSTRUCTION}\n\n"
