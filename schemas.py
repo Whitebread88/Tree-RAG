@@ -24,6 +24,12 @@ class FileUploadBatchResponse(SQLModel):
     job_execution_name: str | None = None
 
 
+class FolderProcessingStatusResponse(SQLModel):
+    folder_name: str
+    user_id: str
+    processing_status: str
+
+
 class ProcessFilesRequest(SQLModel):
     file_ids: list[int] | None = Field(default=None, description="Specific uploaded file ids to process")
     folder_name: str | None = Field(default=None, description="Process uploaded files in this folder")

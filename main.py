@@ -17,10 +17,11 @@ from schemas import (
     ConversationListResponse,
     ConversationMessagesResponse,
     FileUploadBatchResponse,
+    FolderProcessingStatusResponse,
     UserLoginRequest,
     UserResponse,
 )
-from upload_service import upload_files_and_record_metadata
+from upload_service import get_folder_processing_status, upload_files_and_record_metadata
 from user_service import record_user_login
 
 app = FastAPI()
@@ -87,6 +88,11 @@ async def upload_files(
         user_id=id,
         metadata=metadata or None,
     )
+
+
+@app.get("/files/processing-status", response_model=FolderProcessingStatusResponse)
+def get_files_processing_status(id: str, folder_name: str):
+    return get_folder_processing_status(user_id=id, folder_name=folder_name)
 
 
 @app.post("/users/login", response_model=UserResponse)

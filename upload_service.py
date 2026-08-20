@@ -4,13 +4,13 @@ import os
 import uuid
 
 from fastapi import HTTPException, UploadFile
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from cloud_run_jobs_service import trigger_file_processing_job
 from db import engine
 from gcs_service import get_storage_bucket
 from models import FileProcessingStatus, UploadedFile, User
-from schemas import FileUploadBatchResponse, UploadedFileMetadata
+from schemas import FolderProcessingStatusResponse, FileUploadBatchResponse, UploadedFileMetadata
 
 
 async def upload_files_and_record_metadata(
@@ -84,6 +84,36 @@ def _build_gcs_path(folder_name: str, filename: str) -> str:
     sanitized_name = os.path.basename(filename)
     unique_suffix = uuid.uuid4().hex
     return f"{normalized_folder}/{unique_suffix}_{sanitized_name}"
+
+
+def get_folder_processing_status(user_id: str, folder_name: str) -> FolderProcessingStatusResponse:
+    """Return the aggregate processing status for one user's folder."""
+    with Session(engine) as session:
+        statuses = session.exec(
+            select(UploadedFile.processing_status).where(
+                UploadedFile.user_id == user_id,
+                UploadedFile.folder_name == folder_name,
+            )
+        ).all()
+
+    if not statuses:
+        raise HTTPException(status_code=404, detail="No files found for this user and folder")
+
+    if FileProcessingStatus.FAILED in statuses:
+        status = "FAILED"
+    elif any(
+        file_status in {FileProcessingStatus.UPLOADED, FileProcessingStatus.PROCESSING}
+        for file_status in statuses
+    ):
+        status = "PROCESSING"
+    else:
+        status = "COMPLETED"
+
+    return FolderProcessingStatusResponse(
+        folder_name=folder_name,
+        user_id=user_id,
+        processing_status=status,
+    )
 
 
 def _parse_metadata(metadata: str | None) -> dict | None:
