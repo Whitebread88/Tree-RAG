@@ -9,13 +9,14 @@ from sqlmodel import Session
 from cloud_run_jobs_service import trigger_file_processing_job
 from db import engine
 from gcs_service import get_storage_bucket
-from models import FileProcessingStatus, UploadedFile
+from models import FileProcessingStatus, UploadedFile, User
 from schemas import FileUploadBatchResponse, UploadedFileMetadata
 
 
 async def upload_files_and_record_metadata(
     files: list[UploadFile],
     folder_name: str,
+    user_id: str,
     metadata: str | None = None,
 ) -> FileUploadBatchResponse:
     bucket = get_storage_bucket()
@@ -23,6 +24,9 @@ async def upload_files_and_record_metadata(
     uploaded_files: list[UploadedFileMetadata] = []
 
     with Session(engine) as session:
+        if session.get(User, user_id) is None:
+            raise HTTPException(status_code=404, detail="User not found. Call /users/login before uploading files.")
+
         for file in files:
             file_bytes = await file.read()
             size_bytes = len(file_bytes)
@@ -42,6 +46,7 @@ async def upload_files_and_record_metadata(
                 size_bytes=size_bytes,
                 gcs_path=destination_path,
                 folder_name=folder_name,
+                user_id=user_id,
                 file_metadata=parsed_metadata,
                 processing_status=FileProcessingStatus.UPLOADED,
                 content_hash=content_hash,
@@ -58,6 +63,7 @@ async def upload_files_and_record_metadata(
                     size_bytes=uploaded_file.size_bytes,
                     gcs_path=uploaded_file.gcs_path,
                     folder_name=uploaded_file.folder_name,
+                    user_id=uploaded_file.user_id,
                     file_metadata=uploaded_file.file_metadata,
                     processing_status=uploaded_file.processing_status,
                     created_at=uploaded_file.created_at,

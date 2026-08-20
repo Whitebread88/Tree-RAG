@@ -12,6 +12,7 @@ class UploadedFileMetadata(SQLModel):
     size_bytes: int
     gcs_path: str
     folder_name: str
+    user_id: str
     file_metadata: dict | None = Field(default=None, alias="metadata", serialization_alias="metadata")
     processing_status: FileProcessingStatus
     created_at: datetime

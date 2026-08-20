@@ -77,6 +77,7 @@ def answer_query(request: ChatQueryRequest) -> ChatQueryResponse:
         statement = (
             select(FileChunkEmbedding, UploadedFile, distance)
             .join(UploadedFile, UploadedFile.id == FileChunkEmbedding.uploaded_file_id)
+            .where(UploadedFile.user_id == request.user_id)
             .order_by(distance.asc())
             .limit(request.top_k)
         )

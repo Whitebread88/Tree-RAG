@@ -64,6 +64,8 @@ def upload_page():
     <input type="file" name="files" multiple><br><br>
     <label>Folder name:</label><br>
     <input type="text" name="folder_name" required><br><br>
+    <label>User ID:</label><br>
+    <input type="text" name="id" required><br><br>
     <label>Metadata (optional JSON):</label><br>
     <input type="text" name="metadata" placeholder='{"source":"manual-upload"}'><br><br>
     <button type="submit">Upload</button>
@@ -76,11 +78,13 @@ def upload_page():
 async def upload_files(
     files: Annotated[list[UploadFile], File(description="One or more files to upload")],
     folder_name: Annotated[str, Form()],
+    id: Annotated[str, Form(description="Authenticated user ID; matches UserLoginRequest.id")],
     metadata: Annotated[str, Form(description="Optional JSON object string")] = "",
 ):
     return await upload_files_and_record_metadata(
         files=files,
         folder_name=folder_name,
+        user_id=id,
         metadata=metadata or None,
     )
 
