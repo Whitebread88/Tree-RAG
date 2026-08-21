@@ -50,6 +50,7 @@ def _ensure_vector_indexes() -> None:
 # need to be applied explicitly here.
 _COLUMN_MIGRATIONS: tuple[str, ...] = (
     "ALTER TABLE uploaded_files ADD COLUMN IF NOT EXISTS content_hash TEXT",
+    "ALTER TABLE uploaded_files ADD COLUMN IF NOT EXISTS user_id TEXT REFERENCES users(id)",
     "ALTER TABLE file_chunk_embeddings ADD COLUMN IF NOT EXISTS page_number INTEGER",
     "ALTER TABLE file_chunk_embeddings ADD COLUMN IF NOT EXISTS char_offset_start INTEGER",
     "ALTER TABLE file_chunk_embeddings ADD COLUMN IF NOT EXISTS char_offset_end INTEGER",
@@ -57,6 +58,7 @@ _COLUMN_MIGRATIONS: tuple[str, ...] = (
 
 _SUPPORT_INDEXES: tuple[str, ...] = (
     "CREATE INDEX IF NOT EXISTS uploaded_files_content_hash_idx ON uploaded_files (content_hash)",
+    "CREATE INDEX IF NOT EXISTS uploaded_files_user_id_idx ON uploaded_files (user_id)",
 )
 
 

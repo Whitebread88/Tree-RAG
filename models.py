@@ -23,6 +23,9 @@ class UploadedFile(SQLModel, table=True):
     size_bytes: int
     gcs_path: str
     folder_name: str
+    user_id: str = Field(
+        sa_column=Column(ForeignKey("users.id"), nullable=False, index=True)
+    )
     file_metadata: dict | None = Field(default=None, sa_column=Column("metadata", JSONB, nullable=True))
     processing_status: FileProcessingStatus = Field(
         default=FileProcessingStatus.UPLOADED,

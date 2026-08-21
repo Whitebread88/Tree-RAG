@@ -12,6 +12,7 @@ class UploadedFileMetadata(SQLModel):
     size_bytes: int
     gcs_path: str
     folder_name: str
+    user_id: str
     file_metadata: dict | None = Field(default=None, alias="metadata", serialization_alias="metadata")
     processing_status: FileProcessingStatus
     created_at: datetime
@@ -21,6 +22,12 @@ class FileUploadBatchResponse(SQLModel):
     files: list[UploadedFileMetadata]
     job_triggered: bool
     job_execution_name: str | None = None
+
+
+class FolderProcessingStatusResponse(SQLModel):
+    folder_name: str
+    user_id: str
+    processing_status: str
 
 
 class ProcessFilesRequest(SQLModel):
