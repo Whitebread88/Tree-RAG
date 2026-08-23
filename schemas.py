@@ -57,7 +57,7 @@ class ChatQueryRequest(SQLModel):
         description="Existing conversation to continue. If omitted, a new conversation is created.",
     )
     query: str
-    top_k: int = Field(default=5, ge=1, le=20)
+    top_k: int = Field(default=5, ge=1, le=100)
     folder_names: list[str] | None = Field(
         default=None,
         max_length=50,
