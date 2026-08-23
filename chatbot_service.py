@@ -29,7 +29,7 @@ _DEFAULT_SIMILARITY_THRESHOLD = float(os.getenv("RAG_SIMILARITY_THRESHOLD", "0.3
 # Soft cap on the total characters of retrieved context handed to the LLM.
 # Gemini Flash has a huge context window, but more context here means more
 # noise dilution, not better answers.
-_MAX_CONTEXT_CHARS = int(os.getenv("RAG_MAX_CONTEXT_CHARS", "12000"))
+_MAX_CONTEXT_CHARS = int(os.getenv("RAG_MAX_CONTEXT_CHARS", "100000"))
 
 # Number of most-recent prior messages to feed the LLM as conversation context.
 _MAX_HISTORY_MESSAGES = int(os.getenv("CHAT_HISTORY_MESSAGES", "6"))
