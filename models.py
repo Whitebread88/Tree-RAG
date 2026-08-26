@@ -53,6 +53,10 @@ class FileChunkEmbedding(SQLModel, table=True):
     uploaded_file_id: int = Field(sa_column=Column(ForeignKey("uploaded_files.id"), nullable=False))
     chunk_index: int
     chunk_text: str = Field(sa_column=Column(Text, nullable=False))
+    # The breadcrumb (folder > file > heading > page) that was prepended to
+    # chunk_text before embedding. Kept so citations and debugging can show
+    # exactly what the vector was built from.
+    context_header: str | None = Field(default=None, sa_column=Column(Text, nullable=True))
     embedding: list[float] = Field(sa_column=Column(Vector(768), nullable=False))
     page_number: int | None = None
     char_offset_start: int | None = None

@@ -57,7 +57,12 @@ class ChatQueryRequest(SQLModel):
         description="Existing conversation to continue. If omitted, a new conversation is created.",
     )
     query: str
-    top_k: int = Field(default=5, ge=1, le=100)
+    top_k: int = Field(
+        default=20,
+        ge=1,
+        le=100,
+        description="Chunks to pull from the vector index before thresholding and dedup.",
+    )
     folder_names: list[str] | None = Field(
         default=None,
         max_length=50,
@@ -77,6 +82,7 @@ class RetrievedContextChunk(SQLModel):
     folder_name: str
     chunk_index: int
     chunk_text: str
+    context_header: str | None = None
     similarity_score: float
     page_number: int | None = None
 
@@ -84,6 +90,10 @@ class RetrievedContextChunk(SQLModel):
 class ChatQueryResponse(SQLModel):
     conversation_id: int
     query: str
+    retrieval_query: str = Field(
+        description="The query actually embedded for retrieval. Differs from `query` when a "
+        "follow-up was rewritten into a standalone question.",
+    )
     answer: str
     context: list[RetrievedContextChunk]
 
