@@ -1,5 +1,6 @@
 import logging
 import os
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from functools import lru_cache
 
@@ -72,6 +73,19 @@ _QUERY_REWRITE_INSTRUCTION = (
 )
 
 
+@dataclass(frozen=True)
+class _HistoryTurn:
+    """One prior turn, detached from the ORM.
+
+    History outlives the session that read it, so it cannot be a list of
+    ChatMessage instances — those raise DetachedInstanceError once their
+    session closes.
+    """
+
+    role: str
+    content: str
+
+
 @lru_cache(maxsize=1)
 def _get_client() -> genai.Client:
     api_key = os.getenv("GEMINI_API_KEY")
@@ -81,59 +95,50 @@ def _get_client() -> genai.Client:
 
 
 def answer_query(request: ChatQueryRequest) -> ChatQueryResponse:
+    """Answer a query against the user's processed chunks.
+
+    Each database phase runs in its own short-lived session so that the three
+    Gemini round trips in between hold no pooled connection. The pool is small
+    (see db.py), and a single session spanning the whole function would make
+    every request occupy a slot for its full duration — turning model latency
+    into pool-exhaustion errors on unrelated requests.
+    """
     threshold = request.similarity_threshold if request.similarity_threshold is not None else _DEFAULT_SIMILARITY_THRESHOLD
 
-    with Session(engine) as session:
-        conversation = _resolve_conversation(
-            session=session,
-            user_id=request.user_id,
-            conversation_id=request.conversation_id,
-            first_user_message=request.query,
+    # Reads the conversation, and rejects one the caller does not own before
+    # any billable model call.
+    history = _load_history(user_id=request.user_id, conversation_id=request.conversation_id)
+
+    # History has to be loaded before embedding: a follow-up only makes sense
+    # as a search query once its references are resolved.
+    retrieval_query = _build_retrieval_query(query=request.query, history=history)
+    query_embedding = embed_query(retrieval_query)
+
+    context_chunks, prompt_blocks = _retrieve_context(
+        user_id=request.user_id,
+        query_embedding=query_embedding,
+        top_k=request.top_k,
+        folder_names=request.folder_names,
+        threshold=threshold,
+    )
+
+    if not context_chunks:
+        answer = _NO_CONTEXT_ANSWER
+    else:
+        answer = _generate_answer(
+            query=request.query,
+            context_blocks=prompt_blocks,
+            history=history,
         )
 
-        history = _load_recent_messages(
-            session=session,
-            conversation_id=conversation.id,
-            limit=_MAX_HISTORY_MESSAGES,
-        )
-
-        # History has to be loaded before embedding: a follow-up only makes
-        # sense as a search query once its references are resolved.
-        retrieval_query = _build_retrieval_query(query=request.query, history=history)
-        query_embedding = embed_query(retrieval_query)
-
-        distance = FileChunkEmbedding.embedding.cosine_distance(query_embedding).label("distance")
-        statement = (
-            select(FileChunkEmbedding, UploadedFile, distance)
-            .join(UploadedFile, UploadedFile.id == FileChunkEmbedding.uploaded_file_id)
-            .where(UploadedFile.user_id == request.user_id)
-            .order_by(distance.asc())
-            .limit(request.top_k)
-        )
-
-        if request.folder_names:
-            statement = statement.where(UploadedFile.folder_name.in_(request.folder_names))
-
-        rows = session.exec(statement).all()
-        context_chunks, prompt_blocks = _build_context(rows=rows, threshold=threshold)
-
-        if not context_chunks:
-            answer = _NO_CONTEXT_ANSWER
-        else:
-            answer = _generate_answer(
-                query=request.query,
-                context_blocks=prompt_blocks,
-                history=history,
-            )
-
-        session.add(ChatMessage(conversation_id=conversation.id, role="user", content=request.query))
-        session.add(ChatMessage(conversation_id=conversation.id, role="assistant", content=answer))
-        conversation.updated_at = datetime.now(timezone.utc)
-        session.add(conversation)
-        session.commit()
-        session.refresh(conversation)
-
-        conversation_id = conversation.id
+    # The conversation is created here rather than up front, so a failed
+    # model call cannot leave an empty conversation behind.
+    conversation_id = _persist_turn(
+        user_id=request.user_id,
+        conversation_id=request.conversation_id,
+        query=request.query,
+        answer=answer,
+    )
 
     return ChatQueryResponse(
         conversation_id=conversation_id,
@@ -142,6 +147,71 @@ def answer_query(request: ChatQueryRequest) -> ChatQueryResponse:
         answer=answer,
         context=context_chunks,
     )
+
+
+def _load_history(user_id: str, conversation_id: int | None) -> list[_HistoryTurn]:
+    """Phase 1: read prior turns, or nothing at all for a new conversation."""
+    if conversation_id is None:
+        return []
+
+    with Session(engine) as session:
+        conversation = _load_owned_conversation(
+            session=session,
+            user_id=user_id,
+            conversation_id=conversation_id,
+        )
+        return _load_recent_messages(
+            session=session,
+            conversation_id=conversation.id,
+            limit=_MAX_HISTORY_MESSAGES,
+        )
+
+
+def _retrieve_context(
+    user_id: str,
+    query_embedding: list[float],
+    top_k: int,
+    folder_names: list[str] | None,
+    threshold: float,
+) -> tuple[list[RetrievedContextChunk], list[str]]:
+    """Phase 2: nearest-neighbour search, thresholding and dedup."""
+    distance = FileChunkEmbedding.embedding.cosine_distance(query_embedding).label("distance")
+    statement = (
+        select(FileChunkEmbedding, UploadedFile, distance)
+        .join(UploadedFile, UploadedFile.id == FileChunkEmbedding.uploaded_file_id)
+        .where(UploadedFile.user_id == user_id)
+        .order_by(distance.asc())
+        .limit(top_k)
+    )
+
+    if folder_names:
+        statement = statement.where(UploadedFile.folder_name.in_(folder_names))
+
+    with Session(engine) as session:
+        rows = session.exec(statement).all()
+        # Runs inside the session because rows are ORM instances; everything
+        # it returns is plain and safe to use once the session is closed.
+        return _build_context(rows=rows, threshold=threshold)
+
+
+def _persist_turn(user_id: str, conversation_id: int | None, query: str, answer: str) -> int:
+    """Phase 3: create the conversation if needed and record both messages."""
+    with Session(engine) as session:
+        conversation = _resolve_conversation(
+            session=session,
+            user_id=user_id,
+            conversation_id=conversation_id,
+            first_user_message=query,
+        )
+        resolved_id = conversation.id
+
+        session.add(ChatMessage(conversation_id=resolved_id, role="user", content=query))
+        session.add(ChatMessage(conversation_id=resolved_id, role="assistant", content=answer))
+        conversation.updated_at = datetime.now(timezone.utc)
+        session.add(conversation)
+        session.commit()
+
+    return resolved_id
 
 
 def list_conversations(user_id: str) -> ConversationListResponse:
@@ -216,16 +286,16 @@ def _load_owned_conversation(session: Session, user_id: str, conversation_id: in
     return conversation
 
 
-def _load_recent_messages(session: Session, conversation_id: int, limit: int) -> list[ChatMessage]:
+def _load_recent_messages(session: Session, conversation_id: int, limit: int) -> list[_HistoryTurn]:
     if limit <= 0:
         return []
     rows = session.exec(
-        select(ChatMessage)
+        select(ChatMessage.role, ChatMessage.content)
         .where(ChatMessage.conversation_id == conversation_id)
         .order_by(ChatMessage.id.desc())
         .limit(limit)
     ).all()
-    return list(reversed(rows))
+    return [_HistoryTurn(role=role, content=content) for role, content in reversed(rows)]
 
 
 def _derive_title(text: str) -> str | None:
@@ -352,7 +422,7 @@ def _format_prompt_block(
     return f"[{rank}] {location}\n{chunk_text}"
 
 
-def _format_history_block(history: list[ChatMessage]) -> str:
+def _format_history_block(history: list[_HistoryTurn]) -> str:
     if not history:
         return ""
     lines = []
@@ -366,7 +436,7 @@ def _chat_model() -> str:
     return os.getenv("CHAT_MODEL", "gemini-3.7-flash")
 
 
-def _build_retrieval_query(query: str, history: list[ChatMessage]) -> str:
+def _build_retrieval_query(query: str, history: list[_HistoryTurn]) -> str:
     """Resolve a follow-up into a standalone query before it is embedded.
 
     Falls back to the raw query on any failure — a degraded search beats a
@@ -412,7 +482,7 @@ def _clean_rewritten_query(text: str) -> str:
     return cleaned
 
 
-def _generate_answer(query: str, context_blocks: list[str], history: list[ChatMessage]) -> str:
+def _generate_answer(query: str, context_blocks: list[str], history: list[_HistoryTurn]) -> str:
     client = _get_client()
     model_name = _chat_model()
 
