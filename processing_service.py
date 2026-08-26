@@ -9,7 +9,7 @@ from db import engine
 from embeddings_service import embed_chunks
 from gcs_service import get_storage_bucket
 from models import FileChunkEmbedding, FileProcessingStatus, UploadedFile
-from chunking import chunk_segments
+from chunking import TextChunk, chunk_segments
 from docling_service import create_docling_converter, extract_segments_with_docling
 from schemas import ProcessFilesRequest, ProcessFilesResponse, ProcessedFileResult
 
@@ -64,14 +64,18 @@ async def process_uploaded_files(request: ProcessFilesRequest) -> ProcessFilesRe
                         chunk_size=request.chunk_size,
                         chunk_overlap=request.chunk_overlap,
                     )
-                    vectors = embed_chunks([c.text for c in chunks])
+                    headers = [_context_header(uploaded_file=uploaded_file, chunk=c) for c in chunks]
+                    vectors = embed_chunks(
+                        [_embedding_input(header, c.text) for header, c in zip(headers, chunks)]
+                    )
 
-                    for index, (chunk, vector) in enumerate(zip(chunks, vectors)):
+                    for index, (chunk, header, vector) in enumerate(zip(chunks, headers, vectors)):
                         session.add(
                             FileChunkEmbedding(
                                 uploaded_file_id=uploaded_file.id,
                                 chunk_index=index,
                                 chunk_text=chunk.text,
+                                context_header=header,
                                 embedding=vector,
                                 page_number=chunk.page_number,
                                 char_offset_start=chunk.char_offset_start,
@@ -122,6 +126,11 @@ def _try_reuse_existing_embeddings(session: Session, uploaded_file: UploadedFile
     """If another COMPLETED file shares this content_hash, copy its embeddings.
 
     Returns the number of chunks copied, or None if no reusable source exists.
+
+    Only embeddings built with a context header are reusable. Older vectors
+    were built from bare chunk text, so copying them would silently keep a
+    file on the previous retrieval scheme and make reprocessing look like a
+    no-op.
     """
     if not uploaded_file.content_hash:
         return None
@@ -144,6 +153,14 @@ def _try_reuse_existing_embeddings(session: Session, uploaded_file: UploadedFile
     if not source_chunks:
         return None
 
+    if any(chunk.context_header is None for chunk in source_chunks):
+        logger.info(
+            "Not reusing embeddings from file_id=%s for file_id=%s: built before context headers",
+            source.id,
+            uploaded_file.id,
+        )
+        return None
+
     logger.info(
         "Reusing %s embeddings from file_id=%s for file_id=%s (content_hash match)",
         len(source_chunks),
@@ -156,6 +173,9 @@ def _try_reuse_existing_embeddings(session: Session, uploaded_file: UploadedFile
                 uploaded_file_id=uploaded_file.id,
                 chunk_index=chunk.chunk_index,
                 chunk_text=chunk.chunk_text,
+                # Copied verbatim: the header has to match what the reused
+                # vector was actually built from, not this file's own name.
+                context_header=chunk.context_header,
                 embedding=chunk.embedding,
                 page_number=chunk.page_number,
                 char_offset_start=chunk.char_offset_start,
@@ -163,6 +183,31 @@ def _try_reuse_existing_embeddings(session: Session, uploaded_file: UploadedFile
             )
         )
     return len(source_chunks)
+
+
+def _context_header(uploaded_file: UploadedFile, chunk: TextChunk) -> str:
+    """Breadcrumb prepended to a chunk before embedding.
+
+    Chunk text on its own carries no signal about which document or section
+    it came from, so a chunk reading "the limit is 30 days" will not match a
+    query about refund windows. Embedding the breadcrumb with the text puts
+    that signal in the vector.
+    """
+    parts: list[str] = []
+    if uploaded_file.folder_name:
+        parts.append(uploaded_file.folder_name)
+    parts.append(uploaded_file.original_file_name)
+    if chunk.heading:
+        parts.append(chunk.heading)
+    if chunk.page_number is not None:
+        parts.append(f"page {chunk.page_number}")
+    return " > ".join(parts)
+
+
+def _embedding_input(context_header: str, chunk_text: str) -> str:
+    if not context_header:
+        return chunk_text
+    return f"{context_header}\n\n{chunk_text}"
 
 
 def _resolve_files_to_process(session: Session, request: ProcessFilesRequest) -> list[UploadedFile]:

@@ -34,6 +34,22 @@ _MAX_CONTEXT_CHARS = int(os.getenv("RAG_MAX_CONTEXT_CHARS", "100000"))
 # Number of most-recent prior messages to feed the LLM as conversation context.
 _MAX_HISTORY_MESSAGES = int(os.getenv("CHAT_HISTORY_MESSAGES", "6"))
 
+# Two chunks from the same file whose overlap reaches this fraction of the
+# shorter one are treated as the same passage. The ingest sliding window
+# overlaps by design, so without this the top-k fills up with near-duplicates
+# and the LLM sees far fewer distinct facts than it appears to. Set to 1.0
+# to disable.
+_DEDUP_OVERLAP_RATIO = float(os.getenv("RAG_DEDUP_OVERLAP_RATIO", "0.5"))
+
+# Rewrite follow-up questions into standalone queries before embedding them.
+# Without this, "what about annual plans?" is embedded verbatim and retrieval
+# has no idea what the topic is.
+_QUERY_REWRITE_ENABLED = os.getenv("RAG_QUERY_REWRITE", "1").strip().lower() not in {"0", "false", "no"}
+
+# A rewrite longer than this is a sign the model explained itself instead of
+# answering, so we fall back to the raw query.
+_QUERY_REWRITE_MAX_CHARS = 500
+
 _TITLE_MAX_CHARS = 80
 
 _NO_CONTEXT_ANSWER = "I could not find relevant processed chunks for this query."
@@ -47,6 +63,15 @@ _SYSTEM_INSTRUCTION = (
 )
 
 
+_QUERY_REWRITE_INSTRUCTION = (
+    "Rewrite the user's latest message into a single standalone search query for a document "
+    "retrieval system. Resolve pronouns and implicit references using the conversation so far. "
+    "Keep the user's own wording, and copy any names, numbers, codes or identifiers exactly. "
+    "If the message is already self-contained, return it unchanged. "
+    "Return only the query text, with no preamble, quotes or explanation."
+)
+
+
 @lru_cache(maxsize=1)
 def _get_client() -> genai.Client:
     api_key = os.getenv("GEMINI_API_KEY")
@@ -56,7 +81,6 @@ def _get_client() -> genai.Client:
 
 
 def answer_query(request: ChatQueryRequest) -> ChatQueryResponse:
-    query_embedding = embed_query(request.query)
     threshold = request.similarity_threshold if request.similarity_threshold is not None else _DEFAULT_SIMILARITY_THRESHOLD
 
     with Session(engine) as session:
@@ -72,6 +96,11 @@ def answer_query(request: ChatQueryRequest) -> ChatQueryResponse:
             conversation_id=conversation.id,
             limit=_MAX_HISTORY_MESSAGES,
         )
+
+        # History has to be loaded before embedding: a follow-up only makes
+        # sense as a search query once its references are resolved.
+        retrieval_query = _build_retrieval_query(query=request.query, history=history)
+        query_embedding = embed_query(retrieval_query)
 
         distance = FileChunkEmbedding.embedding.cosine_distance(query_embedding).label("distance")
         statement = (
@@ -109,6 +138,7 @@ def answer_query(request: ChatQueryRequest) -> ChatQueryResponse:
     return ChatQueryResponse(
         conversation_id=conversation_id,
         query=request.query,
+        retrieval_query=retrieval_query,
         answer=answer,
         context=context_chunks,
     )
@@ -213,12 +243,17 @@ def _build_context(
 ) -> tuple[list[RetrievedContextChunk], list[str]]:
     context_chunks: list[RetrievedContextChunk] = []
     prompt_blocks: list[str] = []
+    kept_chunks: list[FileChunkEmbedding] = []
     used_chars = 0
 
     for row in rows:
         chunk, uploaded_file, distance = row
         similarity = max(0.0, 1 - float(distance))
         if similarity < threshold:
+            continue
+        # Rows arrive best-first, so the duplicate we drop is always the
+        # lower-scoring window over text we already have.
+        if _is_duplicate(chunk, kept_chunks):
             continue
 
         block = _format_prompt_block(
@@ -227,6 +262,7 @@ def _build_context(
             page_number=chunk.page_number,
             chunk_index=chunk.chunk_index,
             chunk_text=chunk.chunk_text,
+            context_header=chunk.context_header,
         )
         # Stop if adding this block would blow the context budget — but always
         # keep the first chunk so the LLM has something to reason over.
@@ -240,14 +276,63 @@ def _build_context(
                 folder_name=uploaded_file.folder_name,
                 chunk_index=chunk.chunk_index,
                 chunk_text=chunk.chunk_text,
+                context_header=chunk.context_header,
                 similarity_score=similarity,
                 page_number=chunk.page_number,
             )
         )
         prompt_blocks.append(block)
+        kept_chunks.append(chunk)
         used_chars += len(block)
 
     return context_chunks, prompt_blocks
+
+
+def _is_duplicate(candidate: FileChunkEmbedding, kept: list[FileChunkEmbedding]) -> bool:
+    if _DEDUP_OVERLAP_RATIO >= 1.0:
+        return False
+    for existing in kept:
+        if existing.uploaded_file_id != candidate.uploaded_file_id:
+            continue
+        if _overlap_ratio(candidate, existing) >= _DEDUP_OVERLAP_RATIO:
+            return True
+    return False
+
+
+def _overlap_ratio(a: FileChunkEmbedding, b: FileChunkEmbedding) -> float:
+    span_ratio = _char_span_overlap(a, b)
+    if span_ratio is not None:
+        return span_ratio
+    return _token_overlap(a.chunk_text, b.chunk_text)
+
+
+def _char_span_overlap(a: FileChunkEmbedding, b: FileChunkEmbedding) -> float | None:
+    """Overlap as a fraction of the shorter chunk, or None if offsets are missing.
+
+    Offsets are exact for anything ingested after they were added, which makes
+    this the cheap and reliable path for sliding-window duplicates.
+    """
+    offsets = (a.char_offset_start, a.char_offset_end, b.char_offset_start, b.char_offset_end)
+    if any(offset is None for offset in offsets):
+        return None
+
+    overlap = min(a.char_offset_end, b.char_offset_end) - max(a.char_offset_start, b.char_offset_start)
+    if overlap <= 0:
+        return 0.0
+
+    shortest = min(a.char_offset_end - a.char_offset_start, b.char_offset_end - b.char_offset_start)
+    if shortest <= 0:
+        return 0.0
+    return overlap / shortest
+
+
+def _token_overlap(a: str, b: str) -> float:
+    """Fallback for legacy rows with no char offsets."""
+    tokens_a = set(a.lower().split())
+    tokens_b = set(b.lower().split())
+    if not tokens_a or not tokens_b:
+        return 0.0
+    return len(tokens_a & tokens_b) / min(len(tokens_a), len(tokens_b))
 
 
 def _format_prompt_block(
@@ -256,9 +341,15 @@ def _format_prompt_block(
     page_number: int | None,
     chunk_index: int,
     chunk_text: str,
+    context_header: str | None = None,
 ) -> str:
-    location = f"page {page_number}" if page_number is not None else f"chunk {chunk_index}"
-    return f"[{rank}] {file_name} ({location})\n{chunk_text}"
+    if context_header:
+        location = context_header
+    else:
+        # Legacy rows ingested before headers existed.
+        where = f"page {page_number}" if page_number is not None else f"chunk {chunk_index}"
+        location = f"{file_name} ({where})"
+    return f"[{rank}] {location}\n{chunk_text}"
 
 
 def _format_history_block(history: list[ChatMessage]) -> str:
@@ -271,9 +362,59 @@ def _format_history_block(history: list[ChatMessage]) -> str:
     return "Conversation so far:\n" + "\n".join(lines) + "\n\n"
 
 
+def _chat_model() -> str:
+    return os.getenv("CHAT_MODEL", "gemini-3.7-flash")
+
+
+def _build_retrieval_query(query: str, history: list[ChatMessage]) -> str:
+    """Resolve a follow-up into a standalone query before it is embedded.
+
+    Falls back to the raw query on any failure — a degraded search beats a
+    failed request.
+    """
+    if not _QUERY_REWRITE_ENABLED or not history:
+        return query
+
+    prompt = (
+        f"{_QUERY_REWRITE_INSTRUCTION}\n\n"
+        f"{_format_history_block(history)}"
+        f"Latest message: {query}\n\n"
+        "Standalone search query:"
+    )
+
+    try:
+        client = _get_client()
+        response = client.models.generate_content(
+            model=os.getenv("QUERY_REWRITE_MODEL", _chat_model()),
+            contents=prompt,
+        )
+        rewritten = _clean_rewritten_query(response.text or "")
+    except Exception as exc:
+        logger.warning("Query rewrite failed; falling back to the raw query: %s", exc)
+        return query
+
+    if not rewritten or len(rewritten) > _QUERY_REWRITE_MAX_CHARS:
+        logger.info("Discarding unusable query rewrite (length=%s)", len(rewritten))
+        return query
+
+    if rewritten != query:
+        logger.info("Rewrote retrieval query: %r -> %r", query, rewritten)
+    return rewritten
+
+
+def _clean_rewritten_query(text: str) -> str:
+    cleaned = text.strip()
+    # Models often wrap the answer in quotes despite being told not to.
+    for quote in ('"', "'"):
+        if len(cleaned) > 1 and cleaned.startswith(quote) and cleaned.endswith(quote):
+            cleaned = cleaned[1:-1].strip()
+            break
+    return cleaned
+
+
 def _generate_answer(query: str, context_blocks: list[str], history: list[ChatMessage]) -> str:
     client = _get_client()
-    model_name = os.getenv("CHAT_MODEL", "gemini-3.7-flash")
+    model_name = _chat_model()
 
     prompt = (
         f"{_SYSTEM_INSTRUCTION}\n\n"
