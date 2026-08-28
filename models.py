@@ -83,6 +83,10 @@ class Conversation(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     user_id: str = Field(index=True, nullable=False)
     title: str | None = None
+    folder_names: list[str] | None = Field(
+        default=None,
+        sa_column=Column(JSONB, nullable=True),
+    )
     created_at: datetime | None = Field(
         default=None,
         sa_column=Column(DateTime(timezone=True), server_default=func.now(), nullable=False),
