@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from functools import lru_cache
@@ -53,12 +54,20 @@ _QUERY_REWRITE_MAX_CHARS = 500
 
 _TITLE_MAX_CHARS = 80
 
+# The model cites with the [n] rank markers it sees in the context, because
+# numbers are far easier for it to reproduce exactly than long file names.
+# Those ranks mean nothing to a reader, so they are swapped for the source
+# file name after generation.
+_CITATION_PATTERN = re.compile(r"\[(\d+)\]")
+_SOURCES_LABEL = "Sources: "
+
 _NO_CONTEXT_ANSWER = "I could not find relevant processed chunks for this query."
 
 _SYSTEM_INSTRUCTION = (
     "You are a retrieval-augmented assistant. Answer ONLY using the provided context. "
     "If the context does not contain enough information, say so explicitly and name what is missing. "
-    "Cite the sources you used with the [n] markers from the context. "
+    "Cite every claim you make with the [n] marker of the context block it came from, "
+    "for example [1] or [2]. Never invent a marker that is not in the context. "
     "Keep answers concise and factual. "
     "Use the prior conversation only to interpret follow-up questions; never invent facts from it."
 )
@@ -125,10 +134,13 @@ def answer_query(request: ChatQueryRequest) -> ChatQueryResponse:
     if not context_chunks:
         answer = _NO_CONTEXT_ANSWER
     else:
-        answer = _generate_answer(
-            query=request.query,
-            context_blocks=prompt_blocks,
-            history=history,
+        answer = _attach_sources(
+            answer=_generate_answer(
+                query=request.query,
+                context_blocks=prompt_blocks,
+                history=history,
+            ),
+            context_chunks=context_chunks,
         )
 
     # The conversation is created here rather than up front, so a failed
@@ -480,6 +492,45 @@ def _clean_rewritten_query(text: str) -> str:
             cleaned = cleaned[1:-1].strip()
             break
     return cleaned
+
+
+def _attach_sources(answer: str, context_chunks: list[RetrievedContextChunk]) -> str:
+    """Turn the model's [n] rank markers into source file names.
+
+    Ranks are an artefact of how the context was assembled and mean nothing
+    to whoever reads the answer, so each one is replaced by the file it came
+    from and the cited files are listed at the end.
+    """
+    if not context_chunks:
+        return answer
+
+    file_name_by_rank = {index + 1: chunk.file_name for index, chunk in enumerate(context_chunks)}
+    cited: list[str] = []
+
+    def remember(file_name: str) -> None:
+        if file_name not in cited:
+            cited.append(file_name)
+
+    def replace(match: re.Match) -> str:
+        file_name = file_name_by_rank.get(int(match.group(1)))
+        if file_name is None:
+            # A marker the model made up. Leave it be rather than attribute
+            # the claim to a document that was never retrieved.
+            return match.group(0)
+        remember(file_name)
+        return f"[{file_name}]"
+
+    rewritten = _CITATION_PATTERN.sub(replace, answer)
+
+    # Earlier turns in the history already carry file-name markers, so the
+    # model sometimes copies that style instead of using [n].
+    for chunk in context_chunks:
+        if f"[{chunk.file_name}]" in rewritten:
+            remember(chunk.file_name)
+
+    if not cited:
+        return rewritten
+    return f"{rewritten}\n\n{_SOURCES_LABEL}{', '.join(cited)}"
 
 
 def _generate_answer(query: str, context_blocks: list[str], history: list[_HistoryTurn]) -> str:
