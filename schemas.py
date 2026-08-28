@@ -116,11 +116,19 @@ class ChatMessageItem(SQLModel):
     created_at: datetime
 
 
+class ConversationUploadedFile(SQLModel):
+    folder_name: str
+    original_file_name: str
+    size_bytes: int
+    content_type: str | None
+
+
 class ConversationMessagesResponse(SQLModel):
     conversation_id: int
     user_id: str
     title: str | None
     messages: list[ChatMessageItem]
+    uploaded_files: list[ConversationUploadedFile]
 
 
 class UserLoginRequest(SQLModel):

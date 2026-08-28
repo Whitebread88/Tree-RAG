@@ -19,6 +19,7 @@ from schemas import (
     ConversationListResponse,
     ConversationMessagesResponse,
     ConversationSummary,
+    ConversationUploadedFile,
     RetrievedContextChunk,
 )
 
@@ -150,6 +151,7 @@ def answer_query(request: ChatQueryRequest) -> ChatQueryResponse:
         conversation_id=request.conversation_id,
         query=request.query,
         answer=answer,
+        folder_names=request.folder_names,
     )
 
     return ChatQueryResponse(
@@ -206,7 +208,13 @@ def _retrieve_context(
         return _build_context(rows=rows, threshold=threshold)
 
 
-def _persist_turn(user_id: str, conversation_id: int | None, query: str, answer: str) -> int:
+def _persist_turn(
+    user_id: str,
+    conversation_id: int | None,
+    query: str,
+    answer: str,
+    folder_names: list[str] | None,
+) -> int:
     """Phase 3: create the conversation if needed and record both messages."""
     with Session(engine) as session:
         conversation = _resolve_conversation(
@@ -219,6 +227,7 @@ def _persist_turn(user_id: str, conversation_id: int | None, query: str, answer:
 
         session.add(ChatMessage(conversation_id=resolved_id, role="user", content=query))
         session.add(ChatMessage(conversation_id=resolved_id, role="assistant", content=answer))
+        conversation.folder_names = folder_names
         conversation.updated_at = datetime.now(timezone.utc)
         session.add(conversation)
         session.commit()
@@ -257,11 +266,31 @@ def get_conversation_messages(user_id: str, conversation_id: int) -> Conversatio
             ChatMessageItem(id=m.id, role=m.role, content=m.content, created_at=m.created_at)
             for m in messages
         ]
+        uploaded_files = []
+        if conversation.folder_names:
+            file_rows = session.exec(
+                select(UploadedFile)
+                .where(
+                    UploadedFile.user_id == conversation.user_id,
+                    UploadedFile.folder_name.in_(conversation.folder_names),
+                )
+                .order_by(UploadedFile.folder_name.asc(), UploadedFile.id.asc())
+            ).all()
+            uploaded_files = [
+                ConversationUploadedFile(
+                    folder_name=file.folder_name,
+                    original_file_name=file.original_file_name,
+                    size_bytes=file.size_bytes,
+                    content_type=file.content_type,
+                )
+                for file in file_rows
+            ]
         return ConversationMessagesResponse(
             conversation_id=conversation.id,
             user_id=conversation.user_id,
             title=conversation.title,
             messages=items,
+            uploaded_files=uploaded_files,
         )
 
 
