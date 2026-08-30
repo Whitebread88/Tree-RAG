@@ -57,18 +57,25 @@ _TITLE_MAX_CHARS = 80
 
 # The model cites with the [n] rank markers it sees in the context, because
 # numbers are far easier for it to reproduce exactly than long file names.
-# Those ranks mean nothing to a reader, so they are swapped for the source
-# file name after generation.
+# The markers only tell us which files were used: they are stripped from the
+# reply, and the files they named are listed once at the end.
 _CITATION_PATTERN = re.compile(r"\[(\d+)\]")
 _SOURCES_LABEL = "Sources: "
+
+# Tidy-ups for the gaps left behind once a marker is removed.
+_REPEATED_SPACES = re.compile(r"[ \t]{2,}")
+_SPACE_BEFORE_PUNCTUATION = re.compile(r"[ \t]+([.,;:!?)\]])")
+_TRAILING_SPACES = re.compile(r"[ \t]+$", re.MULTILINE)
 
 _NO_CONTEXT_ANSWER = "I could not find relevant processed chunks for this query."
 
 _SYSTEM_INSTRUCTION = (
     "You are a retrieval-augmented assistant. Answer ONLY using the provided context. "
     "If the context does not contain enough information, say so explicitly and name what is missing. "
-    "Cite every claim you make with the [n] marker of the context block it came from, "
-    "for example [1] or [2]. Never invent a marker that is not in the context. "
+    "Cite the context blocks you use by putting their [n] markers at the very end of the "
+    "sentence they support, for example: The limit is 30 days [2]. Never put a marker in "
+    "the middle of a sentence, never refer to a block as \"[1]\" in your prose, and never "
+    "invent a marker that is not in the context. "
     "Keep answers concise and factual. "
     "Use the prior conversation only to interpret follow-up questions; never invent facts from it."
 )
@@ -524,11 +531,11 @@ def _clean_rewritten_query(text: str) -> str:
 
 
 def _attach_sources(answer: str, context_chunks: list[RetrievedContextChunk]) -> str:
-    """Turn the model's [n] rank markers into source file names.
+    """Strip the model's inline citation markers into one source list.
 
-    Ranks are an artefact of how the context was assembled and mean nothing
-    to whoever reads the answer, so each one is replaced by the file it came
-    from and the cited files are listed at the end.
+    The markers exist so we can tell which files an answer drew on. They are
+    noise to whoever reads it, so the prose keeps none of them and the files
+    they named are listed once at the end.
     """
     if not context_chunks:
         return answer
@@ -540,26 +547,36 @@ def _attach_sources(answer: str, context_chunks: list[RetrievedContextChunk]) ->
         if file_name not in cited:
             cited.append(file_name)
 
-    def replace(match: re.Match) -> str:
+    def drop(match: re.Match) -> str:
         file_name = file_name_by_rank.get(int(match.group(1)))
-        if file_name is None:
-            # A marker the model made up. Leave it be rather than attribute
-            # the claim to a document that was never retrieved.
-            return match.group(0)
-        remember(file_name)
-        return f"[{file_name}]"
+        # A marker the model made up still goes, but it earns no source: we
+        # will not attribute a claim to a document that was never retrieved.
+        if file_name is not None:
+            remember(file_name)
+        return ""
 
-    rewritten = _CITATION_PATTERN.sub(replace, answer)
+    stripped = _CITATION_PATTERN.sub(drop, answer)
 
-    # Earlier turns in the history already carry file-name markers, so the
-    # model sometimes copies that style instead of using [n].
+    # Turns predating this format carry file-name markers in the history, so
+    # the model sometimes copies that style instead of using [n].
     for chunk in context_chunks:
-        if f"[{chunk.file_name}]" in rewritten:
+        marker = f"[{chunk.file_name}]"
+        if marker in stripped:
             remember(chunk.file_name)
+            stripped = stripped.replace(marker, "")
 
+    stripped = _close_gaps(stripped)
     if not cited:
-        return rewritten
-    return f"{rewritten}\n\n{_SOURCES_LABEL}{', '.join(cited)}"
+        return stripped
+    return f"{stripped}\n\n{_SOURCES_LABEL}{', '.join(cited)}"
+
+
+def _close_gaps(text: str) -> str:
+    """Repair the spacing a removed marker leaves behind."""
+    text = _REPEATED_SPACES.sub(" ", text)
+    text = _SPACE_BEFORE_PUNCTUATION.sub(r"\1", text)
+    text = _TRAILING_SPACES.sub("", text)
+    return text.strip()
 
 
 def _generate_answer(query: str, context_blocks: list[str], history: list[_HistoryTurn]) -> str:
