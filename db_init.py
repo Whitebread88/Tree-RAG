@@ -50,6 +50,7 @@ def _ensure_vector_indexes() -> None:
 # need to be applied explicitly here.
 _COLUMN_MIGRATIONS: tuple[str, ...] = (
     "ALTER TABLE uploaded_files ADD COLUMN IF NOT EXISTS content_hash TEXT",
+    "ALTER TABLE uploaded_files ADD COLUMN IF NOT EXISTS processing_warning TEXT",
     "ALTER TABLE uploaded_files ADD COLUMN IF NOT EXISTS user_id TEXT REFERENCES users(id)",
     "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS folder_names JSONB",
     "ALTER TABLE file_chunk_embeddings ADD COLUMN IF NOT EXISTS context_header TEXT",

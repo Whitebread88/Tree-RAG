@@ -21,19 +21,39 @@ pip install -r requirements-service.txt
 pip install -r requirements-job.txt
 ```
 
-3. Install LibreOffice (needed for job processing formats):
-
-- Ubuntu/Debian:
+3. Install dev dependencies to run the tests:
 
 ```bash
-sudo apt-get update && sudo apt-get install -y --no-install-recommends libreoffice-writer
+pip install -r requirements-dev.txt
+pytest tests/
 ```
 
-- macOS (Homebrew):
+### Supported input formats
 
-```bash
-brew install --cask libreoffice
-```
+Extraction is handled by docling. It accepts PDF, DOCX, PPTX, XLSX, HTML,
+Markdown, CSV, AsciiDoc and images (PNG/JPEG/TIFF/BMP/WEBP).
+
+Legacy binary Office formats (`.doc`, `.xls`, `.ppt`) are **not** supported and
+will fail with an unsupported-format error. Converting them to their modern
+equivalents before upload is the supported path.
+
+### Extraction tuning
+
+Defaults are set explicitly in `docling_service.create_docling_converter` — OCR
+engine included, because docling's own default picks an engine by probing which
+optional dependencies happen to be installed, and silently does no OCR at all
+when it finds none. These environment variables adjust the job's behaviour:
+
+| Variable | Default | Effect |
+| --- | --- | --- |
+| `DOCLING_MIN_CHARS_PER_PAGE` | `64` | Below this many characters per page, the PDF is re-converted with full-page OCR. Catches scanned pages and broken text layers, which docling otherwise returns as empty without an error. |
+| `DOCLING_DOCUMENT_TIMEOUT_SECONDS` | unset (no timeout) | Aborts conversion after this long. Docling then returns whatever it finished, so the file is recorded with a warning. |
+| `DOCLING_FAIL_ON_PARTIAL` | `false` | When true, a partially-parsed document fails the file instead of being indexed with a warning. |
+
+When docling cannot parse a whole document it reports `PARTIAL_SUCCESS`
+*without* raising. The job records that on `uploaded_files.processing_warning`
+and returns it as `warning` on the file's processing result, so a truncated
+extraction is not indistinguishable from a clean one.
 
 
 ### Docker setup
@@ -88,6 +108,10 @@ python job_runner.py
   - `completed` when done successfully
   - `failed` when an error occurs (with `processing_error` set for troubleshooting)
 
+  A file that completes but could only be parsed in part stays `completed` and
+  carries `processing_warning`; its processing result comes back with status
+  `processed_with_warnings`.
+
 Required service environment variables for job triggering:
 
 - `GOOGLE_CLOUD_PROJECT` (or `PROJECT_ID`)
@@ -98,7 +122,7 @@ Required service environment variables for job triggering:
 
 ```bash
 python -c "from docling.document_converter import DocumentConverter; print('docling import: OK')"
-libreoffice --version  # provided by libreoffice-writer package
+python -c "from docling_service import create_docling_converter; create_docling_converter(); print('docling pipeline: OK')"
 ```
 
 ### Troubleshooting "job starts but no file is processed"

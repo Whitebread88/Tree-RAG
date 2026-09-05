@@ -10,7 +10,7 @@ from embeddings_service import embed_chunks
 from gcs_service import get_storage_bucket
 from models import FileChunkEmbedding, FileProcessingStatus, UploadedFile
 from chunking import TextChunk, chunk_segments
-from docling_service import create_docling_converter, extract_segments_with_docling
+from docling_service import extract_segments_with_docling, fail_on_partial_extraction
 from schemas import ProcessFilesRequest, ProcessFilesResponse, ProcessedFileResult
 
 logger = logging.getLogger(__name__)
@@ -25,7 +25,6 @@ async def process_uploaded_files(request: ProcessFilesRequest) -> ProcessFilesRe
             logger.warning("No files matched processing criteria (include_completed=%s, file_ids=%s, folder_name=%s)", request.include_completed, request.file_ids, request.folder_name)
         bucket = get_storage_bucket()
         results: list[ProcessedFileResult] = []
-        converter: object | None = None
 
         for uploaded_file in files_to_process:
             try:
@@ -48,19 +47,21 @@ async def process_uploaded_files(request: ProcessFilesRequest) -> ProcessFilesRe
                 session.exec(delete(FileChunkEmbedding).where(FileChunkEmbedding.uploaded_file_id == uploaded_file.id))
                 session.flush()
 
-                chunks_created = _try_reuse_existing_embeddings(session=session, uploaded_file=uploaded_file)
+                chunks_created, extraction_warning = _try_reuse_existing_embeddings(
+                    session=session, uploaded_file=uploaded_file
+                )
                 reused_embeddings = chunks_created is not None
 
                 if not reused_embeddings:
-                    if converter is None:
-                        converter = create_docling_converter()
-                    segments = await extract_segments_with_docling(
+                    extraction = await extract_segments_with_docling(
                         file_name=uploaded_file.original_file_name,
                         file_bytes=file_bytes,
-                        converter=converter,
                     )
+                    if extraction.warning and fail_on_partial_extraction():
+                        raise RuntimeError(extraction.warning)
+                    extraction_warning = extraction.warning
                     chunks = chunk_segments(
-                        segments=segments,
+                        segments=extraction.segments,
                         chunk_size=request.chunk_size,
                         chunk_overlap=request.chunk_overlap,
                     )
@@ -86,22 +87,34 @@ async def process_uploaded_files(request: ProcessFilesRequest) -> ProcessFilesRe
 
                 uploaded_file.processed_at = datetime.now(timezone.utc)
                 uploaded_file.processing_error = None
+                # Kept even on success: the file is searchable, but only part
+                # of it was parsed, so the gap has to stay visible.
+                uploaded_file.processing_warning = extraction_warning
                 uploaded_file.processing_status = FileProcessingStatus.COMPLETED
                 session.add(uploaded_file)
                 session.commit()
                 logger.info(
-                    "Completed file processing for file_id=%s chunks_created=%s reused=%s",
+                    "Completed file processing for file_id=%s chunks_created=%s reused=%s warning=%s",
                     uploaded_file.id,
                     chunks_created,
                     reused_embeddings,
+                    extraction_warning,
                 )
+
+                if reused_embeddings:
+                    status = "reused"
+                elif extraction_warning:
+                    status = "processed_with_warnings"
+                else:
+                    status = "processed"
 
                 results.append(
                     ProcessedFileResult(
                         file_id=uploaded_file.id,
                         file_name=uploaded_file.original_file_name,
                         chunks_created=chunks_created,
-                        status="reused" if reused_embeddings else "processed",
+                        status=status,
+                        warning=extraction_warning,
                     )
                 )
             except Exception as exc:  # allow per-file failures without stopping batch
@@ -122,10 +135,14 @@ async def process_uploaded_files(request: ProcessFilesRequest) -> ProcessFilesRe
         return ProcessFilesResponse(results=results)
 
 
-def _try_reuse_existing_embeddings(session: Session, uploaded_file: UploadedFile) -> int | None:
+def _try_reuse_existing_embeddings(
+    session: Session, uploaded_file: UploadedFile
+) -> tuple[int | None, str | None]:
     """If another COMPLETED file shares this content_hash, copy its embeddings.
 
-    Returns the number of chunks copied, or None if no reusable source exists.
+    Returns the number of chunks copied and the source's extraction warning,
+    or (None, None) if no reusable source exists. The warning travels with the
+    chunks: the copy is only as complete as the extraction it came from.
 
     Only embeddings built with a context header are reusable. Older vectors
     were built from bare chunk text, so copying them would silently keep a
@@ -133,7 +150,7 @@ def _try_reuse_existing_embeddings(session: Session, uploaded_file: UploadedFile
     no-op.
     """
     if not uploaded_file.content_hash:
-        return None
+        return None, None
 
     source = session.exec(
         select(UploadedFile)
@@ -143,7 +160,7 @@ def _try_reuse_existing_embeddings(session: Session, uploaded_file: UploadedFile
         .limit(1)
     ).first()
     if source is None:
-        return None
+        return None, None
 
     source_chunks = session.exec(
         select(FileChunkEmbedding)
@@ -151,7 +168,7 @@ def _try_reuse_existing_embeddings(session: Session, uploaded_file: UploadedFile
         .order_by(FileChunkEmbedding.chunk_index.asc())
     ).all()
     if not source_chunks:
-        return None
+        return None, None
 
     if any(chunk.context_header is None for chunk in source_chunks):
         logger.info(
@@ -159,7 +176,7 @@ def _try_reuse_existing_embeddings(session: Session, uploaded_file: UploadedFile
             source.id,
             uploaded_file.id,
         )
-        return None
+        return None, None
 
     logger.info(
         "Reusing %s embeddings from file_id=%s for file_id=%s (content_hash match)",
@@ -182,7 +199,7 @@ def _try_reuse_existing_embeddings(session: Session, uploaded_file: UploadedFile
                 char_offset_end=chunk.char_offset_end,
             )
         )
-    return len(source_chunks)
+    return len(source_chunks), source.processing_warning
 
 
 def _context_header(uploaded_file: UploadedFile, chunk: TextChunk) -> str:
@@ -268,6 +285,7 @@ def _candidate_gcs_paths(gcs_path: str) -> list[str]:
 def _mark_file_failed(session: Session, uploaded_file: UploadedFile, exc: Exception) -> None:
     uploaded_file.processing_status = FileProcessingStatus.FAILED
     uploaded_file.processing_error = str(exc)
+    uploaded_file.processing_warning = None
     session.add(uploaded_file)
     try:
         session.commit()

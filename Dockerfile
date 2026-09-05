@@ -8,12 +8,13 @@ ENV PYTHONUNBUFFERED=True \
 WORKDIR /app
 ARG REQUIREMENTS_FILE=requirements-service.txt
 ARG HF_TOKEN=""
-COPY requirements.txt requirements-service.txt requirements-job.txt preload_models.py ./
+COPY requirements.txt requirements-service.txt requirements-job.txt ./
 
 RUN set -eux; \
     apt-get update; \
+    # libgl1/libglib2.0-0 are needed by the OCR and layout models' image stack.
     if [ "${REQUIREMENTS_FILE}" = "requirements-job.txt" ]; then \
-        apt-get install -y --no-install-recommends libreoffice-writer libgl1 libglib2.0-0; \
+        apt-get install -y --no-install-recommends libgl1 libglib2.0-0; \
     fi; \
     # Sanity-check Python interpreter so we don't accidentally ship multiple versions.
     python --version; \
@@ -29,6 +30,8 @@ RUN set -eux; \
 
 # Pre-download docling model weights into the image (job image only).
 # HF_TOKEN enables authenticated HuggingFace downloads (much faster).
+# Copied after the pip layer so editing these files does not reinstall deps.
+COPY chunking.py docling_service.py preload_models.py ./
 RUN set -eux; \
     if [ "${REQUIREMENTS_FILE}" = "requirements-job.txt" ]; then \
         HF_TOKEN="${HF_TOKEN}" python preload_models.py; \

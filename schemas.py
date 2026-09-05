@@ -44,6 +44,10 @@ class ProcessedFileResult(SQLModel):
     chunks_created: int
     status: str
     error: str | None = None
+    warning: str | None = Field(
+        default=None,
+        description="Set when the file was indexed but docling could not parse all of it.",
+    )
 
 
 class ProcessFilesResponse(SQLModel):
