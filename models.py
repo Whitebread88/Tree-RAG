@@ -39,6 +39,9 @@ class UploadedFile(SQLModel, table=True):
     )
     processed_at: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True), nullable=True))
     processing_error: str | None = None
+    # Set when a file completed but only part of it could be parsed, so a
+    # truncated extraction is not indistinguishable from a clean one.
+    processing_warning: str | None = None
     content_hash: str | None = Field(default=None, index=True)
     created_at: datetime | None = Field(
         default=None,

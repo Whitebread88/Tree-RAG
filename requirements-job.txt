@@ -1,2 +1,7 @@
 -r requirements-service.txt
-docling>=2.0.0,<2.83.0
+# Pinned to a minor range: docling's PDF pipeline defaults have changed
+# materially within 2.x (the OCR engine default became "probe whatever is
+# installed"), so a wide range makes two builds behave differently.
+# The `rapidocr` extra installs onnxruntime, the backend RapidOcrOptions
+# names in docling_service.create_docling_converter.
+docling[rapidocr]>=2.82.0,<2.83.0
