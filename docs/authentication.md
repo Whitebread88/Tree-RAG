@@ -70,15 +70,3 @@ One public key is accepted at a time. Rotate keys in a coordinated maintenance
 window; mixed revisions with different keys will produce temporary 401s.
 Tokens may be replayed if stolen and remain valid until expiry after logout
 (five minutes plus clock tolerance). Keep transport HTTPS and tokens server-side.
-
-## Authentication tests
-
-```sh
-python -m pip install -r requirements-auth-test.txt
-python -m pytest tests/test_auth.py
-```
-
-The tests exercise real RSA signatures, FastAPI dependencies and HTTP routes.
-Database, LLM, and storage services are stubbed so no cloud credentials or
-production data are needed. The separate Docling test suite still uses
-`requirements-dev.txt`.
