@@ -61,11 +61,12 @@ class ChatQueryRequest(SQLModel):
         description="Existing conversation to continue. If omitted, a new conversation is created.",
     )
     query: str
-    top_k: int = Field(
-        default=20,
+    top_k: int | None = Field(
+        default=None,
         ge=1,
         le=100,
-        description="Chunks to pull from the vector index before thresholding and dedup.",
+        description="Chunks to pull from the vector index before thresholding and dedup. "
+        "Defaults to the RAG_TOP_K server setting.",
     )
     folder_names: list[str] | None = Field(
         default=None,
@@ -76,7 +77,8 @@ class ChatQueryRequest(SQLModel):
         default=None,
         ge=0.0,
         le=1.0,
-        description="Drop chunks with cosine similarity below this threshold (0..1).",
+        description="Drop chunks with cosine similarity below this threshold (0..1). "
+        "Defaults to the RAG_SIMILARITY_THRESHOLD server setting.",
     )
 
 
