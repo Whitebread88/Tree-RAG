@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import FastAPI, File, Form, UploadFile
+from fastapi import APIRouter, Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 from sqlmodel import Session, select
 from chatbot_service import (
@@ -23,12 +23,15 @@ from schemas import (
 )
 from upload_service import get_folder_processing_status, upload_files_and_record_metadata
 from user_service import record_user_login
+from auth import CurrentUser, auth_settings, require_user
 
 app = FastAPI()
+api = APIRouter(dependencies=[Depends(require_user)])
 
 
 @app.on_event("startup")
 def startup() -> None:
+    auth_settings()
     ensure_database_schema()
 
 
@@ -43,8 +46,8 @@ def health_check():
         with Session(engine) as session:
             session.exec(select(1)).one()
         return {"status": "connected", "database": "PostgreSQL is reachable"}
-    except Exception as e:
-        return JSONResponse(status_code=503, content={"status": "error", "message": str(e)})
+    except Exception:
+        return JSONResponse(status_code=503, content={"status": "error"})
 
 
 @app.get("/")
@@ -52,7 +55,7 @@ def read_root():
     return {"message": "Cloud Run is active"}
 
 
-@app.get("/upload", include_in_schema=False)
+@api.get("/upload", include_in_schema=False)
 def upload_page():
     """Simple HTML form for testing multi-file uploads in the browser."""
     return HTMLResponse("""<!DOCTYPE html>
@@ -75,47 +78,60 @@ def upload_page():
 </html>""")
 
 
-@app.post("/files/upload", response_model=FileUploadBatchResponse)
+@api.post("/files/upload", response_model=FileUploadBatchResponse)
 async def upload_files(
+    user: CurrentUser,
     files: Annotated[list[UploadFile], File(description="One or more files to upload")],
     folder_name: Annotated[str, Form()],
     id: Annotated[str, Form(description="Authenticated user ID; matches UserLoginRequest.id")],
     metadata: Annotated[str, Form(description="Optional JSON object string")] = "",
 ):
+    user.require_matching_id(id)
     return await upload_files_and_record_metadata(
         files=files,
         folder_name=folder_name,
-        user_id=id,
+        user_id=user.id,
         metadata=metadata or None,
     )
 
 
-@app.get("/files/processing-status", response_model=FolderProcessingStatusResponse)
-def get_files_processing_status(id: str, folder_name: str):
-    return get_folder_processing_status(user_id=id, folder_name=folder_name)
+@api.get("/files/processing-status", response_model=FolderProcessingStatusResponse)
+def get_files_processing_status(id: str, folder_name: str, user: CurrentUser):
+    user.require_matching_id(id)
+    return get_folder_processing_status(user_id=user.id, folder_name=folder_name)
 
 
-@app.post("/users/login", response_model=UserResponse)
-def user_login(request: UserLoginRequest):
-    return record_user_login(request)
+@api.post("/users/login", response_model=UserResponse)
+def user_login(request: UserLoginRequest, user: CurrentUser):
+    user.require_matching_id(request.id)
+    if not user.name:
+        raise HTTPException(status_code=403, detail="Authenticated name is required")
+    return record_user_login(UserLoginRequest(id=user.id, name=user.name))
 
 
-@app.post("/chat/query", response_model=ChatQueryResponse)
-def chat_query(request: ChatQueryRequest):
-    return answer_query(request)
+@api.post("/chat/query", response_model=ChatQueryResponse)
+def chat_query(request: ChatQueryRequest, user: CurrentUser):
+    user.require_matching_id(request.user_id)
+    return answer_query(request.model_copy(update={"user_id": user.id}))
 
 
-@app.get("/chat/conversations", response_model=ConversationListResponse)
-def chat_list_conversations(user_id: str):
-    return list_conversations(user_id=user_id)
+@api.get("/chat/conversations", response_model=ConversationListResponse)
+def chat_list_conversations(user_id: str, user: CurrentUser):
+    user.require_matching_id(user_id)
+    return list_conversations(user_id=user.id)
 
 
-@app.get("/chat/conversations/{conversation_id}", response_model=ConversationMessagesResponse)
-def chat_get_conversation(conversation_id: int, user_id: str):
-    return get_conversation_messages(user_id=user_id, conversation_id=conversation_id)
+@api.get("/chat/conversations/{conversation_id}", response_model=ConversationMessagesResponse)
+def chat_get_conversation(conversation_id: int, user_id: str, user: CurrentUser):
+    user.require_matching_id(user_id)
+    return get_conversation_messages(user_id=user.id, conversation_id=conversation_id)
 
 
-@app.delete("/chat/conversations/{conversation_id}", status_code=204)
-def chat_delete_conversation(conversation_id: int, user_id: str):
-    delete_conversation(user_id=user_id, conversation_id=conversation_id)
+@api.delete("/chat/conversations/{conversation_id}", status_code=204)
+def chat_delete_conversation(conversation_id: int, user_id: str, user: CurrentUser):
+    user.require_matching_id(user_id)
+    delete_conversation(user_id=user.id, conversation_id=conversation_id)
     return None
+
+
+app.include_router(api)
