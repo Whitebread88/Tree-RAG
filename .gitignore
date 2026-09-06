@@ -5,7 +5,6 @@ dist/
 build/
 .env
 .env.*
-!.env.example
 *.pem
 *.p12
 *.json.key

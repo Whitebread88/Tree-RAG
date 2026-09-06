@@ -1,10 +1,5 @@
 # Tree-RAG
 
-The HTTP service requires JWT authentication from chatbot-ui. Configure the
-public key, issuer and audience before deployment; see
-[Authentication setup and rollout](docs/authentication.md). Existing email-based
-user IDs are preserved without a database migration.
-
 ## Dependency profiles
 
 This project now has separate dependency sets:
