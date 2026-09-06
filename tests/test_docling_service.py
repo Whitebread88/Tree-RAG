@@ -6,9 +6,6 @@ the exact traversal the job runs. `_FakeConversion` stands in for docling's
 ConversionResult, which is just a container for the document and status.
 """
 import asyncio
-import sys
-from pathlib import Path
-
 import pytest
 from docling_core.types.doc import BoundingBox, CoordOrigin, DocItemLabel, Size
 from docling_core.types.doc.document import (
@@ -17,8 +14,6 @@ from docling_core.types.doc.document import (
     TableCell,
     TableData,
 )
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from docling_service import (  # noqa: E402
     ExtractionResult,

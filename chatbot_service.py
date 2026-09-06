@@ -26,8 +26,22 @@ from schemas import (
 logger = logging.getLogger(__name__)
 
 # Default similarity floor; chunks below this are dropped from the LLM prompt
-# so they can't poison answers with irrelevant context. Tune empirically.
-_DEFAULT_SIMILARITY_THRESHOLD = float(os.getenv("RAG_SIMILARITY_THRESHOLD", "0.3"))
+# so they can't poison answers with irrelevant context.
+#
+# Calibrated for gemini-embedding-001 with RETRIEVAL_QUERY/RETRIEVAL_DOCUMENT
+# task types, where unrelated text still scores roughly 0.3-0.45 — the space is
+# not centred on zero, so a 0.3 floor admits almost everything. 0.5 clears that
+# band while leaving room for partial matches, which tend to land around
+# 0.55-0.65. Raise it if answers cite irrelevant passages; lower it if queries
+# that should have an answer come back with _NO_CONTEXT_ANSWER.
+_DEFAULT_SIMILARITY_THRESHOLD = float(os.getenv("RAG_SIMILARITY_THRESHOLD", "0.5"))
+
+# Nearest-neighbour candidates pulled from pgvector before thresholding and
+# dedup. This is a budget, not a result count: the sliding-window overlap at
+# ingest means adjacent chunks are near-duplicates, so a large share of any
+# candidate set is discarded before the LLM sees it. Pull generously here and
+# let _DEFAULT_SIMILARITY_THRESHOLD decide what is good enough.
+_DEFAULT_TOP_K = int(os.getenv("RAG_TOP_K", "50"))
 
 # Soft cap on the total characters of retrieved context handed to the LLM.
 # Gemini Flash has a huge context window, but more context here means more
@@ -121,6 +135,7 @@ def answer_query(request: ChatQueryRequest) -> ChatQueryResponse:
     into pool-exhaustion errors on unrelated requests.
     """
     threshold = request.similarity_threshold if request.similarity_threshold is not None else _DEFAULT_SIMILARITY_THRESHOLD
+    top_k = request.top_k if request.top_k is not None else _DEFAULT_TOP_K
 
     # Reads the conversation, and rejects one the caller does not own before
     # any billable model call.
@@ -134,7 +149,7 @@ def answer_query(request: ChatQueryRequest) -> ChatQueryResponse:
     context_chunks, prompt_blocks = _retrieve_context(
         user_id=request.user_id,
         query_embedding=query_embedding,
-        top_k=request.top_k,
+        top_k=top_k,
         folder_names=request.folder_names,
         threshold=threshold,
     )
@@ -363,15 +378,22 @@ def _build_context(
     prompt_blocks: list[str] = []
     kept_chunks: list[FileChunkEmbedding] = []
     used_chars = 0
+    below_threshold = 0
+    duplicates = 0
+    budget_capped = False
+    best_similarity = 0.0
 
     for row in rows:
         chunk, uploaded_file, distance = row
         similarity = max(0.0, 1 - float(distance))
+        best_similarity = max(best_similarity, similarity)
         if similarity < threshold:
+            below_threshold += 1
             continue
         # Rows arrive best-first, so the duplicate we drop is always the
         # lower-scoring window over text we already have.
         if _is_duplicate(chunk, kept_chunks):
+            duplicates += 1
             continue
 
         block = _format_prompt_block(
@@ -385,6 +407,7 @@ def _build_context(
         # Stop if adding this block would blow the context budget — but always
         # keep the first chunk so the LLM has something to reason over.
         if prompt_blocks and used_chars + len(block) > _MAX_CONTEXT_CHARS:
+            budget_capped = True
             break
 
         context_chunks.append(
@@ -402,6 +425,28 @@ def _build_context(
         prompt_blocks.append(block)
         kept_chunks.append(chunk)
         used_chars += len(block)
+
+    # Retrieval is the usual suspect when an answer is thin or missing, and the
+    # thresholds that shape it are env-tunable. Log the funnel so a bad answer
+    # can be traced to the setting responsible without reproducing it.
+    logger.info(
+        "Retrieval funnel: candidates=%s kept=%s below_threshold=%s duplicates=%s "
+        "budget_capped=%s threshold=%.2f best_similarity=%.3f",
+        len(rows),
+        len(context_chunks),
+        below_threshold,
+        duplicates,
+        budget_capped,
+        threshold,
+        best_similarity,
+    )
+    if rows and not context_chunks:
+        logger.warning(
+            "Retrieval returned nothing above threshold=%.2f (best candidate scored %.3f); "
+            "lower RAG_SIMILARITY_THRESHOLD if this query should have matched",
+            threshold,
+            best_similarity,
+        )
 
     return context_chunks, prompt_blocks
 

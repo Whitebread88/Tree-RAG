@@ -93,6 +93,35 @@ gcloud builds submit \
 
 This keeps the service image lightweight while the job image can include heavy parsing dependencies.
 
+## Retrieval tuning
+
+Chat retrieval runs in two stages: pgvector returns the `RAG_TOP_K` nearest
+chunks by cosine distance, then thresholding, dedup and a context budget cut
+that set down before it reaches the model. `top_k` is a candidate budget, not a
+result count — expect noticeably fewer chunks in the prompt than were fetched.
+
+| Variable | Default | Effect |
+| --- | --- | --- |
+| `RAG_TOP_K` | `50` | Nearest-neighbour candidates fetched per query. Raise this to improve recall; the threshold cannot surface a chunk that was never fetched. Capped at 100 by the API schema. |
+| `RAG_SIMILARITY_THRESHOLD` | `0.5` | Cosine-similarity floor. Chunks below it never reach the model. |
+| `RAG_DEDUP_OVERLAP_RATIO` | `0.5` | Two chunks from one file overlapping by this fraction of the shorter one count as the same passage. `1.0` disables dedup. |
+| `RAG_MAX_CONTEXT_CHARS` | `100000` | Soft cap on retrieved context handed to the model. The top-scoring chunk is always kept. |
+| `CHAT_HISTORY_MESSAGES` | `6` | Prior messages fed to the model as conversation context. |
+| `RAG_QUERY_REWRITE` | `1` | Rewrite follow-ups into standalone queries before embedding. |
+
+Both retrieval settings can also be overridden per request via `top_k` and
+`similarity_threshold` on the chat endpoint; omit them to use the server
+defaults above.
+
+The threshold is calibrated for `gemini-embedding-001` at 768 dimensions with
+`RETRIEVAL_QUERY`/`RETRIEVAL_DOCUMENT` task types, where unrelated text still
+scores roughly 0.3-0.45 — the embedding space is not centred on zero, so a
+lower floor admits nearly everything. Every query logs a `Retrieval funnel:`
+line with the candidate count, how many each stage dropped, and the best score
+seen, so a thin or empty answer can be traced to the setting responsible. A
+query where nothing clears the threshold also logs a warning naming the best
+candidate's score.
+
 ## Cloud Run service + Cloud Run job flow
 
 - The `/files/upload` API now records uploaded files with a `processing_status` field set to `uploaded`.
