@@ -23,9 +23,8 @@ COL_X = [M + i * (COLW + GAP) for i in range(COLS)]
 RAIL_END = 1460              # where each rail stops / turns
 
 # --- vertical rhythm -------------------------------------------------------
-EYEBROW_Y = 86
-TITLE_Y = 142
-SUB_Y = 180
+TITLE_Y = 128
+SUB_Y = 166
 
 A_LANE_Y = 256               # "INDEXING · once per document"
 A_ICON_Y = 280               # icon box top
@@ -109,17 +108,17 @@ def icon(name, x, y, color, scale=ICON_SCALE):
 
 
 LANE_A = [
-    ("upload", "Upload", "PDFs, Word, slides, sheets and scans", "land in cloud storage."),
-    ("extract", "Extract", "Layout-aware parsing, with OCR for", "pages that are only images."),
-    ("chunk", "Chunk", "Split into ~1,000-character passages,", "never across a page or section."),
-    ("vector", "Embed", "Tagged folder › file › heading › page,", "then turned into a 768-number vector."),
+    ("upload", "Upload", "PDFs, Word files, slides, spreadsheets", "and scans go into cloud storage."),
+    ("extract", "Extract", "Docling reads the layout. Pages that", "are only images go through OCR."),
+    ("chunk", "Chunk", "Split into ~1,000-character passages", "that stop at page and section breaks."),
+    ("vector", "Embed", "Each passage keeps its folder, file,", "heading and page, then becomes a vector."),
 ]
 
 LANE_B = [
-    ("ask", "Ask", "A follow-up is rewritten into a", "standalone question first."),
-    ("vector", "Embed", "The question becomes a vector in", "that same 768-number space."),
-    ("search", "Search", "The 50 nearest passages come back;", "weak and repeated ones are dropped."),
-    ("answer", "Answer", "Written from those passages only,", "with the source files named."),
+    ("ask", "Ask", "A follow-up is rewritten first, so it", "can be searched on its own."),
+    ("vector", "Embed", "The question becomes a vector too,", "in the same 768-dimension space."),
+    ("search", "Search", "The 50 closest passages come back.", "Weak matches and repeats are cut."),
+    ("answer", "Answer", "Gemini answers from those passages", "alone, and names the files it used."),
 ]
 
 
@@ -160,11 +159,11 @@ def rail(y, t, hot_index, arrow_end=True, end=RAIL_END):
     return "".join(out)
 
 
-def lane_tag(y, word, tail, t):
+def lane_tag(y, text, t):
+    """Caption above a lane. Carries real information, so not a faint kicker."""
     return (
-        f'<text x="{M}" y="{y}" font-size="11.5" font-weight="600" letter-spacing="1.7" '
-        f'fill="{t["accent"]}">{esc(word.upper())}'
-        f'<tspan fill="{t["faint"]}" font-weight="500">   {esc(tail)}</tspan></text>'
+        f'<text x="{M}" y="{y}" font-size="15" font-weight="500" '
+        f'fill="{t["muted"]}">{esc(text)}</text>'
     )
 
 
@@ -191,21 +190,17 @@ def build(theme_name):
 
     # ---- header ----
     s.append(
-        f'<text x="{M}" y="{EYEBROW_Y}" font-size="11.5" font-weight="600" letter-spacing="2.2" '
-        f'fill="{t["accent"]}">RETRIEVAL-AUGMENTED CHAT</text>'
-    )
-    s.append(
         f'<text x="{M}" y="{TITLE_Y}" font-size="44" font-weight="650" letter-spacing="-1.1" '
         f'fill="{t["ink"]}">How the RAG chat works</text>'
     )
     s.append(
         f'<text x="{M}" y="{SUB_Y}" font-size="18" fill="{t["muted"]}">'
-        f'Your files become searchable meaning, and every answer is built only from what the '
-        f'search brings back.</text>'
+        f'Documents are indexed once. Every answer after that comes from the passages the '
+        f'search returns, and nothing else.</text>'
     )
 
     # decorative motif, top right: text lines dissolving into vectors
-    mx, my = 1234, 68
+    mx, my = 1234, 80
     s.append(f'<g opacity="{0.9 if theme_name == "light" else 0.85}">')
     for r, wdt in enumerate((84, 66, 76)):
         s.append(
@@ -222,7 +217,7 @@ def build(theme_name):
     s.append('</g>')
 
     # ---- lane A ----
-    s.append(lane_tag(A_LANE_Y, "Indexing", "·   once per document", t))
+    s.append(lane_tag(A_LANE_Y, "Once, when a file is uploaded", t))
     s.append(lane(LANE_A, A_ICON_Y, A_LABEL_Y, A_D1_Y, A_D2_Y, t, hot_index=3))
     s.append(rail(A_RAIL_Y, t, hot_index=3, arrow_end=False, end=RAIL_END - 42))
 
@@ -248,8 +243,8 @@ def build(theme_name):
         f'<text x="{M + 68}" y="{STORE_Y + 47}" font-size="21" font-weight="600" '
         f'letter-spacing="-.2" fill="{t["ink"]}">Vector store'
         f'<tspan dx="18" font-size="14.5" font-weight="400" letter-spacing="0" '
-        f'fill="{t["muted"]}">Postgres + pgvector · one row per passage · '
-        f'ranked by cosine distance</tspan></text>'
+        f'fill="{t["muted"]}">Postgres with pgvector. One row per passage, '
+        f'ranked by cosine distance.</tspan></text>'
     )
     # vector motif inside the band, right edge
     for r in range(3):
@@ -273,20 +268,15 @@ def build(theme_name):
     )
 
     # ---- lane B ----
-    s.append(lane_tag(B_LANE_Y, "Answering", "·   every question", t))
+    s.append(lane_tag(B_LANE_Y, "Every time someone asks a question", t))
     s.append(rail(B_RAIL_Y, t, hot_index=2, arrow_end=True))
     s.append(lane(LANE_B, B_ICON_Y, B_LABEL_Y, B_D1_Y, B_D2_Y, t, hot_index=2))
 
     # ---- footer ----
     s.append(f'<path d="M{M} {RULE_Y}H{W - M}" stroke="{t["rule"]}" stroke-width="1"/>')
     s.append(
-        f'<text x="{M}" y="{FOOT_Y}" font-size="13" fill="{t["faint"]}">'
-        f'768-dimension vectors · 50 candidates per query · 0.50 similarity floor · '
-        f'answers never leave the retrieved text</text>'
-    )
-    s.append(
-        f'<text x="{W - M}" y="{FOOT_Y}" font-size="13" text-anchor="end" fill="{t["faint"]}">'
-        f'Docling · Gemini · pgvector · FastAPI on Cloud Run</text>'
+        f'<text x="{M}" y="{FOOT_Y}" font-size="13.5" fill="{t["faint"]}">'
+        f'Built with Docling, Gemini, pgvector and FastAPI on Cloud Run</text>'
     )
 
     s.append('</svg>')
